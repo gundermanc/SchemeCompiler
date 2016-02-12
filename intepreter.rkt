@@ -29,6 +29,7 @@
   (lambda (state command)
     (cond
       ((state_exists state (operand_1 command)) (error "variable already declared"))
+      ((has_operand_2 command) (state_update state (operand_1 command) (operand_2 command)))
       (else (state_update state (operand_1 command) 0)))))
 
 ; Assigns a variable, throws an error if it already exists.
