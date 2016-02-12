@@ -36,6 +36,31 @@
   (lambda (expression)
     (caddr expression)))
 
+(define has_operand_2
+  (lambda (expression)
+    (not (null? (cddr expression)))))
+
+; Adds the specified value to the state s mapped to the specified variable
+; Returns the updated state. This does not remove existing mappings of name.
+(define state_add
+  (lambda (s name value)
+    (cons (cons name (cons value '())) s)))
+
+; Removes all instances of the specified value from the state s if it exists.
+; Returns the updated state.
+(define state_remove
+  (lambda (s name)
+    (cond
+      ((null? s) '())
+      ((eq? (caar s) name) (cdr s))
+      (else (cons (car s) (state_remove (cdr s) name))))))
+
+; Adds or updates a mapping from name to value in state s
+; and returns the updated state.
+(define state_update
+  (lambda (s name value)
+    (state_add (state_remove s name) name value)))
+
 ;; Looks up an arithmetic function by its symbol.
 (define operation_function
   (lambda (operator)
@@ -45,7 +70,6 @@
       ((eq? '* operator) (lambda (a b) (* a b)))
       ((eq? '/ operator) (lambda (a b) (quotient a b)))
       ((eq? '% operator) (lambda (a b) (remainder a b)))
-      ((eq? 'return operator) (lambda (a) (M_value a)))
       ((eq? '< operator) (lambda (a b) (< a b)))
       ((eq? '> operator) (lambda (a b) (> a b)))
       ((eq? '<= operator) (lambda (a b) (<= a b)))
@@ -54,6 +78,7 @@
       ((eq? '!= operator) (lambda (a b) (not (eq? a b))))
       ((eq? '&& operator) (lambda (a b) (and a b)))
       ((eq? '|| operator) (lambda (a b) (or a b)))
+      ((eq? '! operator) (lambda (a b) (not b)))
       )))
 
 
@@ -64,7 +89,9 @@
       ((number? expression) expression)
       ((eq? 'true expression) #t)
       ((eq? 'false expression) #f)
-      ((eq? '! (operator expression)) (not (M_value (operand_1 expression))))
+      ((not (has_operand_2 expression))((operation_function (operator expression))
+             0
+             (M_value (operand_1 expression))))
       (else ((operation_function (operator expression))
              (M_value (operand_1 expression))
              (M_value (operand_2 expression)))))))
