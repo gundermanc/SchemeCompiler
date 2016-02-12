@@ -40,17 +40,24 @@
 (define interpret_while
   (lambda (state command)
     (cond
-      ((eq? (M_value state (cadr command)) #f) state)
-      (else (interpret_while (interpret state (caddr command)) command)))))
+      ((eq? (M_value state (condition command)) #f) state)
+      (else (interpret_while (interpret state (true_statement command)) command)))))
 
 ; Interprets an in statement and runs either the true statement or false statement.
 (define interpret_if
   (lambda (state command)
-    (if (M_value state (operand_1 command))
-        (interpret state (operand_2 command))
-        (if (has_operand_3 command)
-            (interpret state (operand_3 command))
+    (if (M_value state (condition command))
+        (interpret state (true_statement command))
+        (if (has_false_statement command)
+            (interpret state (false_statement command))
             state))))
+
+(define condition cadr)
+(define true_statement caddr)
+(define false_statement cadddr)
+(define has_false_statement
+  (lambda (expression)
+      (not (null? (cdddr expression)))))
 
 (define operator
   (lambda (expression)
