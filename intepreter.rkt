@@ -10,7 +10,7 @@
   (lambda (state commands)
     ;(display (caar commands))
     (cond
-      ((null? commands) (error "no commands"))
+      ((null? commands) state)
       ((eq? 'return (caar commands)) (M_value state (cadar commands)))
       (else 
         (interpret_all (interpret state (car commands)) (cdr commands))))))
@@ -20,6 +20,7 @@
   (lambda (state command)
     (cond
       ((eq? 'var (operator command)) (interpret_var state command))
+      ((eq? '= (operator command)) (interpret_assign state command))
       ((eq? 'while (operator command)) (interpret_while state command))
       ((eq? 'if (operator command)) (interpret_if state command)))))
 
@@ -29,6 +30,12 @@
     (cond
       ((state_exists state (operand_1 command)) (error "variable already declared"))
       (else (state_update state (operand_1 command) 0)))))
+
+; Assigns a variable, throws an error if it already exists.
+(define interpret_assign
+  (lambda (state command)
+    (cond
+      ((state_update state (operand_1 command) (M_value state (operand_2 command)))))))
 
 (define operator
   (lambda (expression)
@@ -51,6 +58,13 @@
     (cond
       ((null? s) #f)
       ((eq? (caar s) name) #t)
+      (else (state_exists (cdr s) name)))))
+
+(define state_value
+  (lambda (s name)
+    (cond
+      ((null? s) (error "undefined variable"))
+      ((eq? (caar s) name) (cadar s))
       (else (state_exists (cdr s) name)))))
 
 ; Adds the specified value to the state s mapped to the specified variable
@@ -102,6 +116,7 @@
       ((number? expression) expression)
       ((eq? 'true expression) #t)
       ((eq? 'false expression) #f)
+      ((not (list? expression)) (state_value s expression))
       ((not (has_operand_2 expression))((operation_function (operator expression))
              0
              (M_value s (operand_1 expression))))
