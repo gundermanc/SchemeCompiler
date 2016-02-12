@@ -3,16 +3,15 @@
 ;Start interpreting a file
 (define start
   (lambda (filename)
-    (interpret_all '() (parser filename))))
+    (state_value (interpret_all '() (parser filename)) return_val)))
 
 ;Interpret a list of commands
 (define interpret_all
   (lambda (state commands)
     (cond
-      ((null? commands) state)
-      ((eq? 'return (caar commands)) (value state (cadar commands)))
-      (else 
-        (interpret_all (interpret state (car commands)) (cdr commands))))))
+      ((state_exists state return_val) state)
+      ((null? commands) (error "no return statement encountered"))
+      (else (interpret_all (interpret state (car commands)) (cdr commands))))))
 
 ;Interpret a single command and return the new state
 (define interpret
@@ -21,6 +20,7 @@
       ((eq? 'var (operator command)) (interpret_var state command))
       ((eq? '= (operator command)) (interpret_assign state command))
       ((eq? 'while (operator command)) (interpret_while state command))
+      ((eq? 'return (operator command)) (state_update state return_val (value state (operand_1 command))))
       ((eq? 'if (operator command)) (interpret_if state command)))))
 
 ; Declares a variable, throws an error if it already exists.
@@ -40,7 +40,7 @@
 (define interpret_while
   (lambda (state command)
     (cond
-      ((eq? (value state (condition command)) #f) state)
+      ((or (not (value state (condition command))) (state_exists state return_val)) state)
       (else (interpret_while (interpret state (true_statement command)) command)))))
 
 ; Interprets an in statement and runs either the true statement or false statement.
@@ -49,7 +49,8 @@
     (if (value state (condition command))
         (interpret state (true_statement command))
         (if (has_false_statement command)
-            (interpret state (false_statement command))))))
+            (interpret state (false_statement command))
+            state))))
 
 (define condition cadr)
 (define true_statement caddr)
@@ -81,6 +82,8 @@
 (define has_operand_3
   (lambda (expression)
     (not (null? (cdddr expression)))))
+
+(define return_val '$$return_val$$)
 
 (define state_exists
   (lambda (s name)
