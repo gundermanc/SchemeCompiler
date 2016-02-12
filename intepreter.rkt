@@ -19,10 +19,16 @@
 (define interpret
   (lambda (state command)
     (cond
-      ((eq? 'var (operator command)) (interpret_setVar state command))
+      ((eq? 'var (operator command)) (interpret_var state command))
       ((eq? 'while (operator command)) (interpret_while state command))
       ((eq? 'if (operator command)) (interpret_if state command)))))
-      
+
+; Declares a variable, throws an error if it already exists.
+(define interpret_var
+  (lambda (state command)
+    (cond
+      ((state_exists state (operand_1 command)) (error "variable already declared"))
+      (else (state_update state (operand_1 command) 0)))))
 
 (define operator
   (lambda (expression)
@@ -39,6 +45,13 @@
 (define has_operand_2
   (lambda (expression)
     (not (null? (cddr expression)))))
+
+(define state_exists
+  (lambda (s name)
+    (cond
+      ((null? s) #f)
+      ((eq? (caar s) name) #t)
+      (else (state_exists (cdr s) name)))))
 
 ; Adds the specified value to the state s mapped to the specified variable
 ; Returns the updated state. This does not remove existing mappings of name.
