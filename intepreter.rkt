@@ -16,6 +16,27 @@
   (lambda (expression)
     (not (null? (cddr expression)))))
 
+; Adds the specified value to the state s mapped to the specified variable
+; Returns the updated state. This does not remove existing mappings of name.
+(define state_add
+  (lambda (s name value)
+    (cons (cons name (cons value '())) s)))
+
+; Removes all instances of the specified value from the state s if it exists.
+; Returns the updated state.
+(define state_remove
+  (lambda (s name)
+    (cond
+      ((null? s) '())
+      ((eq? (caar s) name) (cdr s))
+      (else (cons (car s) (state_remove (cdr s) name))))))
+
+; Adds or updates a mapping from name to value in state s
+; and returns the updated state.
+(define state_update
+  (lambda (s name value)
+    (state_add (state_remove s name) name value)))
+
 ;; Looks up an arithmetic function by its symbol.
 (define operation_function
   (lambda (operator)
