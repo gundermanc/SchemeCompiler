@@ -18,16 +18,30 @@
 (define interpret
   (lambda (state command)
     (cond
-      ((eq? 'var (operator command)) (interpret_setVar state command))
+      ((eq? 'var (operator command)) (interpret_var state command))
+      ((eq? '= (operator command)) (interpret_assign state command))
       ((eq? 'while (operator command)) (interpret_while state command))
       ((eq? 'if (operator command)) (interpret_if state command)))))
-      
+
+; Declares a variable, throws an error if it already exists.
+(define interpret_var
+  (lambda (state command)
+    (cond
+      ((state_exists state (operand_1 command)) (error "variable already declared"))
+      ((has_operand_2 command) (state_update state (operand_1 command) (M_value state (operand_2 command))))
+      (else (state_update state (operand_1 command) 0)))))
+
+; Assigns a variable, throws an error if it already exists.
+(define interpret_assign
+  (lambda (state command)
+    (cond
+      ((state_update state (operand_1 command) (M_value state (operand_2 command)))))))
+
 (define interpret_while
   (lambda (state command)
     (cond
-      ((eq? (M_value (car command)) #f) state)
-      (else 
-    
+      ((eq? (M_value state (cadr command)) #f) state)
+      (else (interpret_while (interpret state (caddr command)) command)))))
 
 (define operator
   (lambda (expression)
@@ -44,6 +58,20 @@
 (define has_operand_2
   (lambda (expression)
     (not (null? (cddr expression)))))
+
+(define state_exists
+  (lambda (s name)
+    (cond
+      ((null? s) #f)
+      ((eq? (caar s) name) #t)
+      (else (state_exists (cdr s) name)))))
+
+(define state_value
+  (lambda (s name)
+    (cond
+      ((null? s) (error "undefined variable"))
+      ((eq? (caar s) name) (cadar s))
+      (else (state_exists (cdr s) name)))))
 
 ; Adds the specified value to the state s mapped to the specified variable
 ; Returns the updated state. This does not remove existing mappings of name.
@@ -94,6 +122,7 @@
       ((number? expression) expression)
       ((eq? 'true expression) #t)
       ((eq? 'false expression) #f)
+      ((not (list? expression)) (state_value s expression))
       ((not (has_operand_2 expression))((operation_function (operator expression))
              0
              (M_value s (operand_1 expression))))
