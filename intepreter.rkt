@@ -1,5 +1,29 @@
 (load "simpleParser.scm")
 
+;Start interpreting a file
+(define start
+  (lambda (filename)
+    (interpret_all '() (parser filename))))
+
+;Interpret a list of commands
+(define interpret_all
+  (lambda (state commands)
+    (display (caar commands))
+    (cond
+      ((null? commands) (error "no commands"))
+      ((eq? 'return (caar commands)) (M_value state cadr))
+      (else 
+        (interpret_all (interpret state (car commands)) (cdr commands))))))
+
+;Interpret a single command and return the new state
+(define interpret
+  (lambda (state command)
+    (cond
+      ((eq? 'var (operator command)) (interpret_setVar state command))
+      ((eq? 'while (operator command)) (interpret_while state command))
+      ((eq? 'if (operator command)) (interpret_if state command)))))
+      
+
 (define operator
   (lambda (expression)
     (car expression)))
