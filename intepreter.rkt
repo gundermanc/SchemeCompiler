@@ -10,7 +10,7 @@
   (lambda (state commands)
     (cond
       ((null? commands) state)
-      ((eq? 'return (caar commands)) (M_value state (cadar commands)))
+      ((eq? 'return (caar commands)) (value state (cadar commands)))
       (else 
         (interpret_all (interpret state (car commands)) (cdr commands))))))
 
@@ -28,25 +28,25 @@
   (lambda (state command)
     (cond
       ((state_exists state (operand_1 command)) (error "variable already declared"))
-      ((has_operand_2 command) (state_update state (operand_1 command) (M_value state (operand_2 command))))
+      ((has_operand_2 command) (state_update state (operand_1 command) (value state (operand_2 command))))
       (else (state_update state (operand_1 command) 0)))))
 
 ; Assigns a variable, throws an error if it already exists.
 (define interpret_assign
   (lambda (state command)
     (cond
-      ((state_update state (operand_1 command) (M_value state (operand_2 command)))))))
+      ((state_update state (operand_1 command) (value state (operand_2 command)))))))
 
 (define interpret_while
   (lambda (state command)
     (cond
-      ((eq? (M_value state (cadr command)) #f) state)
+      ((eq? (value state (cadr command)) #f) state)
       (else (interpret_while (interpret state (caddr command)) command)))))
 
 ; Interprets an in statement and runs either the true statement or false statement.
 (define interpret_if
   (lambda (state command)
-    (if (M_value state (operand_1 command))
+    (if (value state (operand_1 command))
         (interpret state (operand_2 command))
         (if (has_operand_3 command)
             (interpret state (operand_3 command))
@@ -133,7 +133,7 @@
 
 
 ;; Gets the value of an expression.
-(define M_value
+(define value
   (lambda (s expression)
     (cond
       ((number? expression) expression)
@@ -142,7 +142,7 @@
       ((not (list? expression)) (state_value s expression))
       ((not (has_operand_2 expression))((operation_function (operator expression))
              0
-             (M_value s (operand_1 expression))))
+             (value s (operand_1 expression))))
       (else ((operation_function (operator expression))
-             (M_value s (operand_1 expression))
-             (M_value s (operand_2 expression)))))))
+             (value s (operand_1 expression))
+             (value s (operand_2 expression)))))))
