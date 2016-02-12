@@ -38,6 +38,16 @@
     (cond
       ((state_update state (operand_1 command) (M_value state (operand_2 command)))))))
 
+; Interprets an in statement and runs either the true statement or false statement.
+(define interpret_if
+  (lambda (state command)
+    (if (M_value state (operand_1 command))
+        (interpret state (operand_2 command))
+        (if (has_operand_3 command)
+            (interpret state (operand_3 command))
+            state))))
+
+
 (define operator
   (lambda (expression)
     (car expression)))
@@ -53,6 +63,14 @@
 (define has_operand_2
   (lambda (expression)
     (not (null? (cddr expression)))))
+
+(define operand_3
+  (lambda (expression)
+    (cadddr expression)))
+
+(define has_operand_3
+  (lambda (expression)
+    (not (null? (cdddr expression)))))
 
 (define state_exists
   (lambda (s name)
