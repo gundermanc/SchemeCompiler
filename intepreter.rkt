@@ -38,8 +38,8 @@
   (lambda (expression)
     (cond
       ((number? expression) expression)
-      ((eq? true expression) #t)
-      ((eq? false expression) #f)
+      ((eq? 'true expression) #t)
+      ((eq? 'false expression) #f)
       ((eq? '! (operator expression)) (not (M_value (operand_1 expression))))
       (else ((operation_function (operator expression))
              (M_value (operand_1 expression))
