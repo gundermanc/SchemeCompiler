@@ -160,7 +160,7 @@
 ; expression: the expression AST.
 ; Throws error if: variable is used before it is declared or an unknown
 ; operation is attempted.
-; Returns: updated state.
+; Returns: the value of the expression.
 (define value
   (lambda (s expression)
     (cond
@@ -226,7 +226,7 @@
     (cond
       ((null? s) (error "undefined variable"))
       ((eq? (caar s) name) (cadar s))
-      (else (state_exists (cdr s) name)))))
+      (else (state_value (cdr s) name)))))
 
 ; Adds the specified value to the state s mapped to the specified variable
 ; Returns: the updated state. This does not remove existing mappings of name.
