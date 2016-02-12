@@ -12,6 +12,10 @@
   (lambda (expression)
     (caddr expression)))
 
+(define has_operand_2
+  (lambda (expression)
+    (not (null? (cddr expression)))))
+
 ;; Looks up an arithmetic function by its symbol.
 (define operation_function
   (lambda (operator)
@@ -21,7 +25,6 @@
       ((eq? '* operator) (lambda (a b) (* a b)))
       ((eq? '/ operator) (lambda (a b) (quotient a b)))
       ((eq? '% operator) (lambda (a b) (remainder a b)))
-      ((eq? 'return operator) (lambda (a) (M_value a)))
       ((eq? '< operator) (lambda (a b) (< a b)))
       ((eq? '> operator) (lambda (a b) (> a b)))
       ((eq? '<= operator) (lambda (a b) (<= a b)))
@@ -30,6 +33,7 @@
       ((eq? '!= operator) (lambda (a b) (not (eq? a b))))
       ((eq? '&& operator) (lambda (a b) (and a b)))
       ((eq? '|| operator) (lambda (a b) (or a b)))
+      ((eq? '! operator) (lambda (a b) (not b)))
       )))
 
 
@@ -40,7 +44,9 @@
       ((number? expression) expression)
       ((eq? 'true expression) #t)
       ((eq? 'false expression) #f)
-      ((eq? '! (operator expression)) (not (M_value (operand_1 expression))))
+      ((not (has_operand_2 expression))((operation_function (operator expression))
+             0
+             (M_value (operand_1 expression))))
       (else ((operation_function (operator expression))
              (M_value (operand_1 expression))
              (M_value (operand_2 expression)))))))
