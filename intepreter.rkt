@@ -8,9 +8,8 @@
 ;Interpret a list of commands
 (define interpret_all
   (lambda (state commands)
-    ;(display (caar commands))
     (cond
-      ((null? commands) (error "no commands"))
+      ((null? commands) state)
       ((eq? 'return (caar commands)) (M_value state (cadar commands)))
       (else 
         (interpret_all (interpret state (car commands)) (cdr commands))))))
@@ -23,6 +22,12 @@
       ((eq? 'while (operator command)) (interpret_while state command))
       ((eq? 'if (operator command)) (interpret_if state command)))))
       
+(define interpret_while
+  (lambda (state command)
+    (cond
+      ((eq? (M_value (car command)) #f) state)
+      (else 
+    
 
 (define operator
   (lambda (expression)
