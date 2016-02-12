@@ -49,7 +49,7 @@
     (if (value state (condition command))
         (interpret state (true_statement command))
         (if (has_false_statement command)
-            (interpret state (false_statement command))
+            (interpret state (false_statement command))))))
 
 (define condition cadr)
 (define true_statement caddr)
