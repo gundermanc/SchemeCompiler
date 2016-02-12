@@ -8,10 +8,10 @@
 ;Interpret a list of commands
 (define interpret_all
   (lambda (state commands)
-    (display (caar commands))
+    ;(display (caar commands))
     (cond
       ((null? commands) (error "no commands"))
-      ((eq? 'return (caar commands)) (M_value state cadr))
+      ((eq? 'return (caar commands)) (M_value state (cadar commands)))
       (else 
         (interpret_all (interpret state (car commands)) (cdr commands))))))
 
@@ -84,14 +84,14 @@
 
 ;; Gets the value of an expression.
 (define M_value
-  (lambda (expression)
+  (lambda (s expression)
     (cond
       ((number? expression) expression)
       ((eq? 'true expression) #t)
       ((eq? 'false expression) #f)
       ((not (has_operand_2 expression))((operation_function (operator expression))
              0
-             (M_value (operand_1 expression))))
+             (M_value s (operand_1 expression))))
       (else ((operation_function (operator expression))
-             (M_value (operand_1 expression))
-             (M_value (operand_2 expression)))))))
+             (M_value s (operand_1 expression))
+             (M_value s (operand_2 expression)))))))
