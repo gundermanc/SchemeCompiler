@@ -70,7 +70,7 @@
       ((eq? 'var (operator statement)) (interpret_var state statement))
       ((eq? '= (operator statement)) (interpret_assign state statement))
       ((eq? 'while (operator statement)) (interpret_while state statement))
-      ((eq? 'return (operator statement)) (state_update state return_val (value state (operand_1 statement))))
+      ((eq? 'return (operator statement)) (state_update state return_val (pretty_value state (operand_1 statement))))
       ((eq? 'if (operator statement)) (interpret_if state statement)))))
 
 ; Interprets a var declaration statement from the AST and returns the updated state
@@ -85,7 +85,7 @@
     (cond
       ((state_exists state (operand_1 statement)) (error "variable already declared"))
       ((has_operand_2 statement) (state_update state (operand_1 statement) (value state (operand_2 statement))))
-      (else (state_update state (operand_1 statement) 0)))))
+      (else (state_update state (operand_1 statement) null)))))
 
 ; Interprets a var assign statement from the AST and returns the updated state
 ; list.
@@ -96,8 +96,9 @@
 ; statement: a single parsed assign statement.
 (define interpret_assign
   (lambda (state statement)
-    (cond
-      ((state_update state (operand_1 statement) (value state (operand_2 statement)))))))
+    (if (state_exists state (operand_1 statement))
+        (state_update state (operand_1 statement) (value state (operand_2 statement)))
+        (error "Undeclared variable in assignment"))))
 
 ; Interprets a while statement from the AST and returns the updated state
 ; list.
@@ -175,6 +176,17 @@
              (value s (operand_1 expression))
              (value s (operand_2 expression)))))))
 
+; Wraps the value function such as to return non-lisp versions
+; of boolean values.
+(define pretty_value
+  (lambda (s expression)
+    ((lambda (retval)
+      (cond
+        ((eq? retval #t) 'true)
+        ((eq? retval #f) 'false)
+        (else retval)))
+     (value s expression))))
+
 ; Helper functions:
 ; ==========================================================
 
@@ -225,7 +237,9 @@
   (lambda (s name)
     (cond
       ((null? s) (error "undefined variable"))
-      ((eq? (caar s) name) (cadar s))
+      ((eq? (caar s) name) (if (null? (cadar s))
+                               (error "uninitialized variable")
+                               (cadar s)))
       (else (state_value (cdr s) name)))))
 
 ; Adds the specified value to the state s mapped to the specified variable
