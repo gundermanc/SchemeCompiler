@@ -21,7 +21,7 @@
 ;
 ; filename: the name of the input file.
 (define interpret
-  (lambda (filename)
+  (λ (filename)
     (interpret_ast (parser filename))))
 
 ; Interprets an AST and returns a single value containing result
@@ -34,7 +34,7 @@
 ; ast: a properly formed abstract syntax tree of the format output
 ;      by simpleParser.scm
 (define interpret_ast
-  (lambda (ast)
+  (λ (ast)
     (state_value (interpret_all '() ast) return_val)))
 
 ; "Private" Impl:
@@ -50,7 +50,7 @@
 ;        execution) in the format ((K V) (K V) ..)
 ; ast: a list of the remaining commands from the ast.
 (define interpret_all
-  (lambda (state ast)
+  (λ (state ast)
     (cond
       ((state_exists state return_val) state)
       ((null? ast) (error "no return statement encountered"))
@@ -65,7 +65,7 @@
 ;        execution) in the format ((K V) (K V) ..)
 ; statement: a single parsed statement.
 (define interpret_statement
-  (lambda (state statement)
+  (λ (state statement)
     (cond
       ((eq? 'var (operator statement)) (interpret_var state statement))
       ((eq? '= (operator statement)) (interpret_assign state statement))
@@ -81,7 +81,7 @@
 ;        execution) in the format ((K V) (K V) ..)
 ; statement: a single parsed var statement.
 (define interpret_var
-  (lambda (state statement)
+  (λ (state statement)
     (cond
       ((state_exists state (operand_1 statement)) (error "variable already declared"))
       ((has_operand_2 statement) (state_update state (operand_1 statement) (value state (operand_2 statement))))
@@ -95,7 +95,7 @@
 ;        execution) in the format ((K V) (K V) ..)
 ; statement: a single parsed assign statement.
 (define interpret_assign
-  (lambda (state statement)
+  (λ (state statement)
     (if (state_exists state (operand_1 statement))
         (state_update state (operand_1 statement) (value state (operand_2 statement)))
         (error "Undeclared variable in assignment"))))
@@ -108,7 +108,7 @@
 ;        execution) in the format ((K V) (K V) ..)
 ; statement: a single parsed while statement.
 (define interpret_while
-  (lambda (state statement)
+  (λ (state statement)
     (cond
       ((or (not (value state (condition statement))) (state_exists state return_val)) state)
       (else (interpret_while (interpret_statement state (true_statement statement)) statement)))))
@@ -121,7 +121,7 @@
 ;        execution) in the format ((K V) (K V) ..)
 ; statement: a single parsed if statement.
 (define interpret_if
-  (lambda (state statement)
+  (λ (state statement)
     (if (value state (condition statement))
         (interpret_statement state (true_statement statement))
         (if (has_false_statement statement)
@@ -135,22 +135,22 @@
 ;          If operator is also a unary operator, set a to zero
 ;          and b to the unary operand.
 (define operation_function
-  (lambda (operator)
+  (λ (operator)
     (cond
-      ((eq? '+ operator) (lambda (a b) (+ a b)))
-      ((eq? '- operator) (lambda (a b) (- a b)))
-      ((eq? '* operator) (lambda (a b) (* a b)))
-      ((eq? '/ operator) (lambda (a b) (quotient a b)))
-      ((eq? '% operator) (lambda (a b) (remainder a b)))
-      ((eq? '< operator) (lambda (a b) (< a b)))
-      ((eq? '> operator) (lambda (a b) (> a b)))
-      ((eq? '<= operator) (lambda (a b) (<= a b)))
-      ((eq? '>= operator) (lambda (a b) (>= a b)))
-      ((eq? '== operator) (lambda (a b) (eq? a b)))
-      ((eq? '!= operator) (lambda (a b) (not (eq? a b))))
-      ((eq? '&& operator) (lambda (a b) (and a b)))
-      ((eq? '|| operator) (lambda (a b) (or a b)))
-      ((eq? '! operator) (lambda (a b) (not b)))
+      ((eq? '+ operator) (λ (a b) (+ a b)))
+      ((eq? '- operator) (λ (a b) (- a b)))
+      ((eq? '* operator) (λ (a b) (* a b)))
+      ((eq? '/ operator) (λ (a b) (quotient a b)))
+      ((eq? '% operator) (λ (a b) (remainder a b)))
+      ((eq? '< operator) (λ (a b) (< a b)))
+      ((eq? '> operator) (λ (a b) (> a b)))
+      ((eq? '<= operator) (λ (a b) (<= a b)))
+      ((eq? '>= operator) (λ (a b) (>= a b)))
+      ((eq? '== operator) (λ (a b) (eq? a b)))
+      ((eq? '!= operator) (λ (a b) (not (eq? a b))))
+      ((eq? '&& operator) (λ (a b) (and a b)))
+      ((eq? '|| operator) (λ (a b) (or a b)))
+      ((eq? '! operator) (λ (a b) (not b)))
       (else (error "undefined operator" operator))
       )))
 
@@ -163,7 +163,7 @@
 ; operation is attempted.
 ; Returns: the value of the expression.
 (define value
-  (lambda (s expression)
+  (λ (s expression)
     (cond
       ((number? expression) expression)
       ((eq? 'true expression) #t)
@@ -179,8 +179,8 @@
 ; Wraps the value function such as to return non-lisp versions
 ; of boolean values.
 (define pretty_value
-  (lambda (s expression)
-    ((lambda (retval)
+  (λ (s expression)
+    ((λ (retval)
       (cond
         ((eq? retval #t) 'true)
         ((eq? retval #f) 'false)
@@ -201,7 +201,7 @@
 
 ; Checks if an IF has an else statement.
 (define has_false_statement
-  (lambda (expression)
+  (λ (expression)
       (not (null? (cdddr expression)))))
 
 ; Gets an operator from an operation.
@@ -215,7 +215,7 @@
 
 ; Checks if an operation has two or more operands.
 (define has_operand_2
-  (lambda (expression)
+  (λ (expression)
     (not (null? (cddr expression)))))
 
 ; Defines the name of the state entry used for storing
@@ -225,7 +225,7 @@
 ; Checks if the given name exists in the state list.
 ; Returns: true if the name exists, false if it does not.
 (define state_exists
-  (lambda (s name)
+  (λ (s name)
     (cond
       ((null? s) #f)
       ((eq? (caar s) name) #t)
@@ -234,7 +234,7 @@
 ; Gets the value of the given name from the state list.
 ; Returns: the value. Behavior on name not mapped is undefined.
 (define state_value
-  (lambda (s name)
+  (λ (s name)
     (cond
       ((null? s) (error "undefined variable"))
       ((eq? (caar s) name) (if (null? (cadar s))
@@ -245,13 +245,13 @@
 ; Adds the specified value to the state s mapped to the specified variable
 ; Returns: the updated state. This does not remove existing mappings of name.
 (define state_add
-  (lambda (s name value)
+  (λ (s name value)
     (cons (cons name (cons value '())) s)))
 
 ; Removes all instances of the specified value from the state s if it exists.
 ; Returns the updated state.
 (define state_remove
-  (lambda (s name)
+  (λ (s name)
     (cond
       ((null? s) '())
       ((eq? (caar s) name) (cdr s))
@@ -261,6 +261,6 @@
 ; and returns the updated state.
 ; This is the preferred way to mapping a name to a state value.
 (define state_update
-  (lambda (s name value)
+  (λ (s name value)
     (state_add (state_remove s name) name value)))
 
