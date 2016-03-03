@@ -20,7 +20,7 @@
 ; multiple times.
 ;
 ; filename: the name of the input file.
-(define interpret_file
+(define interpret
   (lambda (filename)
     (interpret_ast (parser filename))))
 
@@ -54,7 +54,7 @@
     (cond
       ((state_exists state return_val) state)
       ((null? ast) (error "no return statement encountered"))
-      (else (interpret_all (interpret state (car ast)) (cdr ast))))))
+      (else (interpret_all (interpret_statement state (car ast)) (cdr ast))))))
 
 ; Interprets a single statement from the AST and returns the updated state
 ; list containing values for variables.
@@ -64,7 +64,7 @@
 ; state: a list containing the current state (an empty list for first
 ;        execution) in the format ((K V) (K V) ..)
 ; statement: a single parsed statement.
-(define interpret
+(define interpret_statement
   (lambda (state statement)
     (cond
       ((eq? 'var (operator statement)) (interpret_var state statement))
@@ -111,7 +111,7 @@
   (lambda (state statement)
     (cond
       ((or (not (value state (condition statement))) (state_exists state return_val)) state)
-      (else (interpret_while (interpret state (true_statement statement)) statement)))))
+      (else (interpret_while (interpret_statement state (true_statement statement)) statement)))))
 
 ; Interprets an if statement from the AST and returns the updated state
 ; list.
@@ -123,9 +123,9 @@
 (define interpret_if
   (lambda (state statement)
     (if (value state (condition statement))
-        (interpret state (true_statement statement))
+        (interpret_statement state (true_statement statement))
         (if (has_false_statement statement)
-            (interpret state (false_statement statement))
+            (interpret_statement state (false_statement statement))
             state))))
 
 ; Looks up an arithmetic or boolean function by its symbol.
@@ -151,7 +151,7 @@
       ((eq? '&& operator) (lambda (a b) (and a b)))
       ((eq? '|| operator) (lambda (a b) (or a b)))
       ((eq? '! operator) (lambda (a b) (not b)))
-      (else (error "undefined operator"))
+      (else (error "undefined operator" operator))
       )))
 
 
