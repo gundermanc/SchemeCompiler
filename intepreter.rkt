@@ -84,7 +84,12 @@
                    continue
                    break
                    (λ (s v) (interpret_catch s statement
-                                             (λ (v) (interpret_finally v statement return_state return_val continue break throw))
+                                             (λ (v) (interpret_finally v statement
+                                                                       return_state
+                                                                       return_val
+                                                                       continue
+                                                                       break
+                                                                       throw))
                                              return_val continue break throw v)))))
 
 (define interpret_catch
@@ -95,7 +100,7 @@
                    return_val
                    (λ (v) (continue (state_pop_scope v)))
                    (λ (v) (break (state_pop_scope v)))
-                   (λ (v) (throw (state_pop_scope v))))))
+                   (λ (s v) (throw (state_pop_scope s) v)))))
 
 (define interpret_finally
   (λ (state statement return_state return_val continue break throw)
@@ -110,7 +115,7 @@
                    return_val
                    (λ (v) (continue (state_pop_scope v)))
                    (λ (v) (break (state_pop_scope v)))
-                   (λ (v) (throw (state_pop_scope v)))))) ;TODO: continnue, break, throw might not change scope properly.
+                   (λ (s v) (throw (state_pop_scope s) v)))))
 
 ; Interprets a var declaration statement from the AST and returns the updated state
 ; list.
