@@ -22,7 +22,7 @@
 ; filename: the name of the input file.
 (define interpret
   (λ (filename)
-    (interpret_ast '() (parser filename)
+    (interpret_ast (state_push_scope '()) (parser filename)
                    (λ (v) (error "No return statement encountered"))
                    (λ (v) v)
                    (λ (v) (error "Continue encountered outside of loop"))
@@ -280,16 +280,22 @@
 ; Returns: the updated state. This does not remove existing mappings of name.
 (define state_add
   (λ (s name value)
+    (cons (state_level_add (car s) name value) s)))
+
+; Adds the specified value to the state level and maps the specified variable to the value.
+; Returns: the updated state level. This does not remove existing mappings of name.
+(define state_level_add
+  (λ (s name value)
     (cons (cons name (cons value '())) s)))
 
-; Removes all instances of the specified value from the state s if it exists.
-; Returns the updated state.
-(define state_remove
-  (λ (s name)
+; Removes all instances of the specified value from the state level s if it exists.
+; Calls return continuation with params (#t/#f new_state_level)
+(define state_level_replace
+  (λ (state name value return)
     (cond
-      ((null? s) '())
-      ((eq? (caar s) name) (cdr s))
-      (else (cons (car s) (state_remove (cdr s) name))))))
+      ((null? state) (return #f '()))
+      ((eq? (caar state) name) (return #t (cons (cons (caar state) (cons value '())) (cdr state))))
+      (else (state_level_replace (cdr state) name value (λ (b s) (return b (cons (car state) s))))))))
 
 ; Adds or updates a mapping from name to value in state s
 ; and returns the updated state.
@@ -297,4 +303,31 @@
 (define state_update
   (λ (s name value)
     (state_add (state_remove s name) name value)))
+
+(define state_level_update
+  (λ (s name value return)
+    (state_add (state_remove s name) name value)))
+
+(define state_update2
+  (λ (state name value return)
+    (cond
+      ((null? state) (return #f '()))
+      ((null? (car state)) (return #f '()))
+      (else (state_level_replace (car state) name value
+                                 (λ (updated s)
+                                   (if updated
+                                       (return #t (cons s (cdr state)))
+                                       (state_update2 (cdr state) name value (λ (updated s2) (return updated (cons s s2)))))))))))
+
+; Pushes a new scoping level onto the state.
+; s: the state to modify.
+; Returns: the updated state.
+(define state_push_scope
+  (λ (s)
+    (cons '() s)))
+
+; Pops a scoping level from the state.
+; s: the state to modify.
+; Returns: the updated state.
+(define state_pop_scope cdr)
 
