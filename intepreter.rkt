@@ -106,7 +106,9 @@
     (interpret_ast (state_push_scope state) (cdr statement)
                    (λ (v) (return_state (state_pop_scope v)))
                    return_val
-                   continue break throw))) ;TODO: continnue, break, throw might not change scope properly.
+                   (λ (v) (continue (state_pop_scope v)))
+                   (λ (v) (break (state_pop_scope v)))
+                   (λ (v) (throw (state_pop_scope v)))))) ;TODO: continnue, break, throw might not change scope properly.
 
 ; Interprets a var declaration statement from the AST and returns the updated state
 ; list.
