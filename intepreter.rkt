@@ -22,7 +22,7 @@
 ; filename: the name of the input file.
 (define interpret
   (λ (filename)
-    (interpret_ast (parser filename))))
+    (interpret_ast '() (parser filename) (λ (v) v))))
 
 ; Interprets an AST and returns a single value containing result
 ; of the program execution (whatever was returned using the return
@@ -34,27 +34,13 @@
 ; ast: a properly formed abstract syntax tree of the format output
 ;      by simpleParser.scm
 (define interpret_ast
-  (λ (ast)
-    (state_value (interpret_all '() ast) return_val)))
+  (λ (state ast return)
+    (if (null? ast)
+        (error "no return statement encountered")
+        (interpret_statement state (car ast) (λ (v) (return (interpret_ast state (cdr ast) return)))))))
 
 ; "Private" Impl:
 ; ==========================================================
-
-; Interprets an AST and returns the updated state list containing
-; values for variables as well as a return value (defined by return_val).
-; Throws an error if: no return statement in control flow path or
-; variables are used before being declared, variables are declared
-; multiple times.
-;
-; state: a list containing the current state (an empty list for first
-;        execution) in the format ((K V) (K V) ..)
-; ast: a list of the remaining commands from the ast.
-(define interpret_all
-  (λ (state ast)
-    (cond
-      ((state_exists state return_val) state)
-      ((null? ast) (error "no return statement encountered"))
-      (else (interpret_all (interpret_statement state (car ast)) (cdr ast))))))
 
 ; Interprets a single statement from the AST and returns the updated state
 ; list containing values for variables.
@@ -63,15 +49,17 @@
 ;
 ; state: a list containing the current state (an empty list for first
 ;        execution) in the format ((K V) (K V) ..)
-; statement: a single parsed statement.
+; ast: the abstract syntax tree.
+; return: return continuation function.
 (define interpret_statement
-  (λ (state statement)
+  (λ (state statement return)
     (cond
-      ((eq? 'var (operator statement)) (interpret_var state statement))
-      ((eq? '= (operator statement)) (interpret_assign state statement))
-      ((eq? 'while (operator statement)) (interpret_while state statement))
-      ((eq? 'return (operator statement)) (state_update state return_val (pretty_value state (operand_1 statement))))
-      ((eq? 'if (operator statement)) (interpret_if state statement)))))
+      ((eq? 'var (operator statement)) (return (interpret_var state statement)))
+      ((eq? '= (operator statement)) (return (interpret_assign state statement))
+      ((eq? 'while (operator statement)) (interpret_while state statement return))
+      ((eq? 'return (operator statement)) (error "ahhhhhhh noooo"));(return (pretty_value state (operand_1 statement))))
+      ((eq? 'if (operator statement)) (return (interpret_if state statement)))
+      (else "invalid statement")))))
 
 ; Interprets a var declaration statement from the AST and returns the updated state
 ; list.
@@ -107,11 +95,12 @@
 ; state: a list containing the current state (an empty list for first
 ;        execution) in the format ((K V) (K V) ..)
 ; statement: a single parsed while statement.
+; return: a continuation function.
 (define interpret_while
-  (λ (state statement)
+  (λ (state statement return)
     (cond
-      ((or (not (value state (condition statement))) (state_exists state return_val)) state)
-      (else (interpret_while (interpret_statement state (true_statement statement)) statement)))))
+      ((not (value state (condition statement))) (return state))
+      (else (interpret_ast_iter state (cons (true_statement statement) '()) (λ (v) (interpret_while v statement return)))))))
 
 ; Interprets an if statement from the AST and returns the updated state
 ; list.
@@ -217,10 +206,6 @@
 (define has_operand_2
   (λ (expression)
     (not (null? (cddr expression)))))
-
-; Defines the name of the state entry used for storing
-; return value in the state.
-(define return_val '$$return_val$$)
 
 ; Checks if the given name exists in the state list.
 ; Returns: true if the name exists, false if it does not.
