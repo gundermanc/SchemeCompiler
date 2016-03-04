@@ -1,9 +1,9 @@
-; EECS 345 Programming Project, Part 1
+; EECS 345 Programming Project, Part 1 + 2
 ; Case Western Reserve Univ.
 ;
 ; Christian Gunderman
 ; Elliot Essman
-; 2 Feb. 2016
+; 3 Feb. 2016
 
 ; External dependencies
 ; ==========================================================
@@ -26,7 +26,8 @@
                    (λ (v) (error "No return statement encountered"))
                    (λ (v) v)
                    (λ (v) (error "Continue encountered outside of loop"))
-                   (λ (v) (error "Break encountered outside of loop")))))
+                   (λ (v) (error "Break encountered outside of loop"))
+                   (λ (v) (error "Uncaught throw")))))
 
 ; Interprets an AST and returns a single value containing result
 ; of the program execution (whatever was returned using the return
@@ -38,13 +39,15 @@
 ; ast: a properly formed abstract syntax tree of the format output
 ;      by simpleParser.scm
 (define interpret_ast
-  (λ (state ast return_state return_val continue break)
+  (λ (state ast return_state return_val continue break throw)
     (if (null? ast)
         (return_state state) ;; TODO: check if we saw a return.
-        (interpret_statement state (car ast) 
-                    (λ (v) (interpret_ast v (cdr ast) return_state return_val continue break))
+        (interpret_statement state (car ast)
+                    (λ (v) (interpret_ast v (cdr ast) return_state return_val continue break throw))
+                    return_val
                     continue
-                    break)))
+                    break
+                    throw))))
 
 ; "Private" Impl:
 ; ==========================================================
@@ -59,21 +62,26 @@
 ; ast: the abstract syntax tree.
 ; return: return continuation function.
 (define interpret_statement
-  (λ (state statement return_state return_val continue break)
+  (λ (state statement return_state return_val continue break throw)
     (cond
       ((eq? 'var (operator statement)) (return_state (interpret_var state statement)))
       ((eq? '= (operator statement)) (return_state (interpret_assign state statement)))
-      ((eq? 'while (operator statement)) (interpret_while state statement return_state break))
+      ((eq? 'while (operator statement)) (interpret_while state statement return_state return_val continue break throw))
       ((eq? 'return (operator statement)) (return_val (pretty_value state (operand_1 statement))))
-      ((eq? 'if (operator statement)) (interpret_if state statement return_state return_val break))
-      ((eq? 'begin (operator statement)) (interpret_block state statement return_state return_val break))
-      ((eq? 'continue (operator statment)) (continue state))
+      ((eq? 'if (operator statement)) (interpret_if state statement return_state return_val continue break throw))
+      ((eq? 'begin (operator statement)) (interpret_block state statement return_state return_val continue break throw))
+      ((eq? 'continue (operator statement)) (continue state))
       ((eq? 'break (operator statement)) (break state))
+      ((eq? 'try (operator statement)) (interpret_try state statement return_state return_val break throw))
       (else "invalid statement"))))
 
+(define interpret_try
+  (λ (state statement return_state return_val break throw finally) 1))
+    
+
 (define interpret_block
-  (λ (state statement return_state return_val continue break)
-    (interpret_ast state (cdr statement) return_state return_val continue break)))
+  (λ (state statement return_state return_val continue break throw)
+    (interpret_ast state (cdr statement) return_state return_val continue break throw)))
 
 ; Interprets a var declaration statement from the AST and returns the updated state
 ; list.
@@ -110,7 +118,8 @@
 ;        execution) in the format ((K V) (K V) ..)
 ; statement: a single parsed while statement.
 ; return: a continuation function.
-  (λ (state statement return_state return_val continue break)
+(define interpret_while
+  (λ (state statement return_state return_val continue break throw)
     (cond
       ((not (value state (condition statement))) (return_state state))
       (else (interpret_statement state (true_statement statement) 
@@ -118,6 +127,7 @@
                                  return_val
                                  (λ (v) (interpret_while state statement return_state return_val))
                                  (λ (v) (return_state state))
+                                 throw
                                  )))))
 ; Interprets an if statement from the AST and returns the updated state
 ; list.
@@ -127,11 +137,11 @@
 ;        execution) in the format ((K V) (K V) ..)
 ; statement: a single parsed if statement.
 (define interpret_if
-  (λ (state statement return_state return_val continue break)
+  (λ (state statement return_state return_val continue break throw)
     (if (value state (condition statement))
-        (interpret_statement state (true_statement statement) return_state return_val continue break)
+        (interpret_statement state (true_statement statement) return_state return_val continue break throw)
         (if (has_false_statement statement)
-            (interpret_statement state (false_statement statement) return_state return_val continue break)
+            (interpret_statement state (false_statement statement) return_state return_val continue break throw)
             (return state)))))
 
 ; Looks up an arithmetic or boolean function by its symbol.
