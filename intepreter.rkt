@@ -87,13 +87,13 @@
 
 (define interpret_catch
   (λ (state statement return_state return_val continue break throw value)
-    (interpret_ast (state_update state (caar (cdaddr statement)) (λ (v) v) (λ (v) v) value)
+    (interpret_ast (state_add (state_push_scope state) (caar (cdaddr statement)) value)
                    (cadr (cdaddr statement)) ; ast
-                   return_state
+                   (λ (v) (return_state (state_pop_scope v)))
                    return_val
-                   continue
-                   break
-                   throw)))
+                   (λ (v) (continue (state_pop_scope v)))
+                   (λ (v) (break (state_pop_scope v)))
+                   (λ (v) (throw (state_pop_scope v))))))
 
 (define interpret_finally
   (λ (state statement return_state return_val continue break throw)
