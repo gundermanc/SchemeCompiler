@@ -117,9 +117,12 @@
 ; statement: a single parsed var statement.
 (define interpret_var
   (λ (state statement)
-    (state_update state (operand_1 statement) (operand_2 statement)
+    (state_update state (operand_1 statement) 0
                   (λ (v) (error "variable already declared"))
-                  (λ (v) (state_add state  (operand_1 statement) (value v (operand_2 statement)))))))
+                  (λ (v) (state_add state  (operand_1 statement)
+                                    (if (has_operand_2 statement)
+                                                 (value state (operand_2 statement))
+                                                 null))))))
 
 ; Interprets a var assign statement from the AST and returns the updated state
 ; list.
@@ -268,8 +271,12 @@
 (define state_value
   (λ (s name)
     (if (null? s)
-        (error "undefined variable")
-        (state_level_value (car s) name (λ (v) v) (λ () (state_value (cdr s) name))))))
+        (error "undefined variable" name)
+        (state_level_value (car s) name
+                           (λ (v) (if (null? v)
+                                      (error "variable used before initialization")
+                                      v))
+                           (λ () (state_value (cdr s) name))))))
 
 ; Adds the specified value to the state s mapped to the specified variable
 ; Returns: the updated state. This does not remove existing mappings of name.
