@@ -22,7 +22,7 @@
 ; filename: the name of the input file.
 (define interpret
   (λ (filename)
-    (interpret_ast '() (parser filename) (λ (v) error "No return statement encountered") (λ (v) v))))
+    (interpret_ast '() (parser filename) (λ (v) (error "No return statement encountered")) (λ (v) v))))
 
 ; Interprets an AST and returns a single value containing result
 ; of the program execution (whatever was returned using the return
@@ -35,10 +35,9 @@
 ;      by simpleParser.scm
 (define interpret_ast
   (λ (state ast return_state return_val)
-    (display state)
     (if (null? ast)
         (return_state state) ;; TODO: check if we saw a return.
-        (interpret_statement state (car ast) (λ (v) (interpret_ast v (cdr ast) return_state return_val)) (λ (v) v)))))
+        (interpret_statement state (car ast) (λ (v) (interpret_ast v (cdr ast) return_state return_val)) (λ (v) v) (λ (v) (error "unexpected continue"))))))
 
 ; "Private" Impl:
 ; ==========================================================
@@ -53,20 +52,20 @@
 ; ast: the abstract syntax tree.
 ; return: return continuation function.
 (define interpret_statement
-  (λ (state statement return_state return_val)
+  (λ (state statement return_state return_val continue)
     (cond
       ((eq? 'var (operator statement)) (return_state (interpret_var state statement)))
       ((eq? '= (operator statement)) (return_state (interpret_assign state statement)))
       ((eq? 'while (operator statement)) (interpret_while state statement return_state return_val))
       ((eq? 'return (operator statement)) (return_val (pretty_value state (operand_1 statement))))
       ((eq? 'if (operator statement)) (interpret_if state statement return_state return_val))
-      ((eq? 'begin (operator statement)) (interpret_block state statement return))
-      ;((eq? 'continue (operator statment)) 
+      ((eq? 'begin (operator statement)) (interpret_block state statement return_state return_val))
+      ((eq? 'continue (operator statment)) (continue))
       (else "invalid statement"))))
 
 (define interpret_block
-  (λ (state statement return)
-    (interpret_ast state (cdr statement) return)))
+  (λ (state statement return_state return_val)
+    (interpret_ast state (cdr statement) return_state return_val)))
 
 ; Interprets a var declaration statement from the AST and returns the updated state
 ; list.
@@ -104,10 +103,14 @@
 ; statement: a single parsed while statement.
 ; return: a continuation function.
 (define interpret_while
-  (λ (state statement return)
+  (λ (state statement return_state return_val)
     (cond
-      ((not (value state (condition statement))) (return state))
-      (else (interpret_statement state (true_statement statement) (λ (v) (interpret_while v statement return)))))))
+      ((not (value state (condition statement))) (return_state state))
+      (else (interpret_statement state (true_statement statement) 
+                                 (λ (v) (interpret_while v statement return_state return_val));return_state
+                                 return_val
+                                 (interpret_while state statement return_state return_val);continue
+                                 )))))
 
 ; Interprets an if statement from the AST and returns the updated state
 ; list.
@@ -117,11 +120,11 @@
 ;        execution) in the format ((K V) (K V) ..)
 ; statement: a single parsed if statement.
 (define interpret_if
-  (λ (state statement return)
+  (λ (state statement return_state return_val)
     (if (value state (condition statement))
-        (interpret_statement state (true_statement statement) return)
+        (interpret_statement state (true_statement statement) return_state return_val)
         (if (has_false_statement statement)
-            (interpret_statement state (false_statement statement) return)
+            (interpret_statement state (false_statement statement) return_state return_val)
             (return state)))))
 
 ; Looks up an arithmetic or boolean function by its symbol.
