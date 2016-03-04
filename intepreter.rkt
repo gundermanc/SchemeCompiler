@@ -43,8 +43,9 @@
         (return_state state) ;; TODO: check if we saw a return.
         (interpret_statement state (car ast) 
                     (λ (v) (interpret_ast v (cdr ast) return_state return_val continue break))
+                    return_val
                     continue
-                    break)))
+                    break))))
 
 ; "Private" Impl:
 ; ==========================================================
@@ -63,11 +64,11 @@
     (cond
       ((eq? 'var (operator statement)) (return_state (interpret_var state statement)))
       ((eq? '= (operator statement)) (return_state (interpret_assign state statement)))
-      ((eq? 'while (operator statement)) (interpret_while state statement return_state break))
+      ((eq? 'while (operator statement)) (interpret_while state statement return_state return_val continue break))
       ((eq? 'return (operator statement)) (return_val (pretty_value state (operand_1 statement))))
-      ((eq? 'if (operator statement)) (interpret_if state statement return_state return_val break))
-      ((eq? 'begin (operator statement)) (interpret_block state statement return_state return_val break))
-      ((eq? 'continue (operator statment)) (continue state))
+      ((eq? 'if (operator statement)) (interpret_if state statement return_state return_val continue break))
+      ((eq? 'begin (operator statement)) (interpret_block state statement return_state return_val continue break))
+      ((eq? 'continue (operator statement)) (continue state))
       ((eq? 'break (operator statement)) (break state))
       (else "invalid statement"))))
 
@@ -110,14 +111,15 @@
 ;        execution) in the format ((K V) (K V) ..)
 ; statement: a single parsed while statement.
 ; return: a continuation function.
+(define interpret_while
   (λ (state statement return_state return_val continue break)
     (cond
       ((not (value state (condition statement))) (return_state state))
       (else (interpret_statement state (true_statement statement) 
-                                 (λ (v) (interpret_while v statement return_state return_val))
+                                 (λ (v) (interpret_while v statement return_state return_val continue break))
                                  return_val
-                                 (λ (v) (interpret_while state statement return_state return_val))
-                                 (λ (v) (return_state state))
+                                 (λ (v) (interpret_while v statement return_state return_val continue break))
+                                 (λ (v) (return_state v))
                                  )))))
 ; Interprets an if statement from the AST and returns the updated state
 ; list.
@@ -266,3 +268,10 @@
   (λ (s name value)
     (state_add (state_remove s name) name value)))
 
+(define state_push
+  (λ (state)
+    ((cons '() state))))
+
+(define state_pop
+  (λ (state)
+    ((cdr state))))
