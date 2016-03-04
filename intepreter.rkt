@@ -105,7 +105,7 @@
 (define interpret_finally
   (λ (state statement return_state return_val continue break throw)
     (if (null? (cadddr statement))
-        (return_state v)
+        (return_state state)
         (interpret_ast state (cadr (cadddr statement)) return_state return_val continue break throw))))
 
 (define interpret_block
@@ -127,7 +127,7 @@
 (define interpret_var
   (λ (state statement)
     (state_update state (operand_1 statement) 0
-                  (λ (v) (error "variable already declared"))
+                  (λ (v) (error "variable already declared:" (operand_1 statement)))
                   (λ (v) (state_add state  (operand_1 statement)
                                     (if (has_operand_2 statement)
                                                  (value state (operand_2 statement))
