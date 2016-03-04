@@ -3,7 +3,7 @@
 ;
 ; Christian Gunderman
 ; Elliot Essman
-; 3 Feb. 2016
+; 4 Mar. 2016
 
 ; External dependencies
 ; ==========================================================
@@ -27,7 +27,7 @@
                    (λ (v) v)
                    (λ (v) (error "Continue encountered outside of loop"))
                    (λ (v) (error "Break encountered outside of loop"))
-                   (λ (v) (error "Uncaught throw")))))
+                   (λ (s v) (error "Uncaught throw")))))
 
 ; Interprets an AST and returns a single value containing result
 ; of the program execution (whatever was returned using the return
@@ -41,7 +41,7 @@
 (define interpret_ast
   (λ (state ast return_state return_val continue break throw)
     (if (null? ast)
-        (return_state state) ;; TODO: check if we saw a return.
+        (return_state state)
         (interpret_statement state (car ast)
                     (λ (v) (interpret_ast v (cdr ast) return_state return_val continue break throw))
                     return_val
@@ -72,12 +72,25 @@
       ((eq? 'begin (operator statement)) (interpret_block state statement return_state return_val continue break throw))
       ((eq? 'continue (operator statement)) (continue state))
       ((eq? 'break (operator statement)) (break state))
-      ((eq? 'try (operator statement)) (interpret_try state statement return_state return_val break throw))
+      ((eq? 'try (operator statement)) (interpret_try state statement return_state return_val continue break throw))
+      ((eq? 'throw (operator statement)) (throw state (value state (operand_1 statement))))
       (else "invalid statement"))))
 
 (define interpret_try
-  (λ (state statement return_state return_val break throw finally) 1))
-    
+  (λ (state statement return_state return_val continue break throw)
+    (interpret_ast state (cadr statement)
+                   return_state
+                   return_val
+                   continue
+                   break
+                   (λ (s v) (interpret_ast (state_update state (caar (cdaddr statement)) v)
+                                           (cadr (cdaddr statement)) ; ast
+                                           return_state
+                                           return_val
+                                           continue
+                                           break
+                                           throw))) ; TODO: scope exception var so it doesn't escape. Will probably need to push a scope here.
+    ))
 
 (define interpret_block
   (λ (state statement return_state return_val continue break throw)
