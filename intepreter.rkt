@@ -83,7 +83,9 @@
                    return_val
                    continue
                    break
-                   (λ (s v) (interpret_catch s statement return_state return_val continue break throw v))))) ; TODO: scope exception var so it doesn't escape. Will probably need to push a scope here.
+                   (λ (s v) (interpret_catch s statement
+                                             (λ (v) (interpret_finally v statement return_state return_val continue break throw))
+                                             return_val continue break throw v)))))
 
 (define interpret_catch
   (λ (state statement return_state return_val continue break throw value)
