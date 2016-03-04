@@ -301,7 +301,9 @@
   (λ (state name value updated notupdated)
     (cond
       ((null? state) (notupdated '()))
-      ((null? (car state)) (notupdated '()))
+      ((null? (car state)) (state_update (cdr state) name value
+                                         (λ (s2) (updated (cons (car state) s2)))
+                                         (λ (s2) (notupdated (cons (car state) s2)))))
       (else (state_level_replace (car state) name value
                                  (λ (s) (updated (cons s (cdr state))))
                                  (λ (s) (state_update (cdr state) name value
