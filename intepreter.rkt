@@ -103,7 +103,10 @@
 
 (define interpret_block
   (λ (state statement return_state return_val continue break throw)
-    (interpret_ast state (cdr statement) return_state return_val continue break throw)))
+    (interpret_ast (state_push_scope state) (cdr statement)
+                   (λ (v) (return_state (state_pop_scope v)))
+                   return_val
+                   continue break throw))) ;TODO: continnue, break, throw might not change scope properly.
 
 ; Interprets a var declaration statement from the AST and returns the updated state
 ; list.
@@ -114,10 +117,9 @@
 ; statement: a single parsed var statement.
 (define interpret_var
   (λ (state statement)
-    (cond
-      ((state_exists state (operand_1 statement)) (error "variable already declared"))
-      ((has_operand_2 statement) (state_update state (operand_1 statement) (value state (operand_2 statement))))
-      (else (state_update state (operand_1 statement) null)))))
+    (state_update state (operand_1 statement) (operand_2 statement)
+                  (λ (v) (error "variable already declared"))
+                  (λ (v) (state_add state  (operand_1 statement) (value v (operand_2 statement)))))))
 
 ; Interprets a var assign statement from the AST and returns the updated state
 ; list.
@@ -128,9 +130,9 @@
 ; statement: a single parsed assign statement.
 (define interpret_assign
   (λ (state statement)
-    (if (state_exists state (operand_1 statement))
-        (state_update state (operand_1 statement) (value state (operand_2 statement)))
-        (error "Undeclared variable in assignment"))))
+    (state_update state (operand_1 statement) (value state (operand_2 statement))
+                  (λ (v) v)
+                  (λ (v) (error "undeclared variable in assignment")))))
 
 ; Interprets a while statement from the AST and returns the updated state
 ; list.
@@ -256,25 +258,18 @@
   (λ (expression)
     (not (null? (cddr expression)))))
 
-; Checks if the given name exists in the state list.
-; Returns: true if the name exists, false if it does not.
-(define state_exists
-  (λ (s name)
+(define state_level_value
+  (λ (s name return notfound)
     (cond
-      ((null? s) #f)
-      ((eq? (caar s) name) #t)
-      (else (state_exists (cdr s) name)))))
+      ((null? s) (notfound))
+      ((eq? (caar s) name) (return (cadar s)))
+      (else (state_level_value (cdr s) name return notfound)))))
 
-; Gets the value of the given name from the state list.
-; Returns: the value. Behavior on name not mapped is undefined.
 (define state_value
   (λ (s name)
-    (cond
-      ((null? s) (error "undefined variable"))
-      ((eq? (caar s) name) (if (null? (cadar s))
-                               (error "uninitialized variable")
-                               (cadar s)))
-      (else (state_value (cdr s) name)))))
+    (if (null? s)
+        (error "undefined variable")
+        (state_level_value (car s) name (λ (v) v) (λ () (state_value (cdr s) name))))))
 
 ; Adds the specified value to the state s mapped to the specified variable
 ; Returns: the updated state. This does not remove existing mappings of name.
@@ -282,42 +277,29 @@
   (λ (s name value)
     (cons (state_level_add (car s) name value) s)))
 
-; Adds the specified value to the state level and maps the specified variable to the value.
-; Returns: the updated state level. This does not remove existing mappings of name.
 (define state_level_add
   (λ (s name value)
     (cons (cons name (cons value '())) s)))
 
-; Removes all instances of the specified value from the state level s if it exists.
-; Calls return continuation with params (#t/#f new_state_level)
 (define state_level_replace
-  (λ (state name value return)
+  (λ (state name value replaced notreplaced)
     (cond
-      ((null? state) (return #f '()))
-      ((eq? (caar state) name) (return #t (cons (cons (caar state) (cons value '())) (cdr state))))
-      (else (state_level_replace (cdr state) name value (λ (b s) (return b (cons (car state) s))))))))
+      ((null? state) (notreplaced '()))
+      ((eq? (caar state) name) (replaced (cons (cons (caar state) (cons value '())) (cdr state))))
+      (else (state_level_replace (cdr state) name value
+                                 (λ (s) (replaced (cons (car state) s)))
+                                 (λ (s) (notreplaced (cons (car state) s))))))))
 
-; Adds or updates a mapping from name to value in state s
-; and returns the updated state.
-; This is the preferred way to mapping a name to a state value.
 (define state_update
-  (λ (s name value)
-    (state_add (state_remove s name) name value)))
-
-(define state_level_update
-  (λ (s name value return)
-    (state_add (state_remove s name) name value)))
-
-(define state_update2
-  (λ (state name value return)
+  (λ (state name value updated notupdated)
     (cond
-      ((null? state) (return #f '()))
-      ((null? (car state)) (return #f '()))
+      ((null? state) (notupdated '()))
+      ((null? (car state)) (notupdated '()))
       (else (state_level_replace (car state) name value
-                                 (λ (updated s)
-                                   (if updated
-                                       (return #t (cons s (cdr state)))
-                                       (state_update2 (cdr state) name value (λ (updated s2) (return updated (cons s s2)))))))))))
+                                 (λ (s) (updated (cons s (cdr state))))
+                                 (λ (s) (state_update (cdr state) name value
+                                                      (λ (s2) (updated (cons s s2)))
+                                                      (λ (s2) (notupdated (cons s s2))))))))))
 
 ; Pushes a new scoping level onto the state.
 ; s: the state to modify.
