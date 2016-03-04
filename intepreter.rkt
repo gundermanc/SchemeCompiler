@@ -79,18 +79,27 @@
 (define interpret_try
   (λ (state statement return_state return_val continue break throw)
     (interpret_ast state (cadr statement)
+                   (λ (v) (interpret_finally v statement return_state return_val continue break throw))
+                   return_val
+                   continue
+                   break
+                   (λ (s v) (interpret_catch s statement return_state return_val continue break throw v))))) ; TODO: scope exception var so it doesn't escape. Will probably need to push a scope here.
+
+(define interpret_catch
+  (λ (state statement return_state return_val continue break throw value)
+    (interpret_ast (state_update state (caar (cdaddr statement)) value)
+                   (cadr (cdaddr statement)) ; ast
                    return_state
                    return_val
                    continue
                    break
-                   (λ (s v) (interpret_ast (state_update state (caar (cdaddr statement)) v)
-                                           (cadr (cdaddr statement)) ; ast
-                                           return_state
-                                           return_val
-                                           continue
-                                           break
-                                           throw))) ; TODO: scope exception var so it doesn't escape. Will probably need to push a scope here.
-    ))
+                   throw)))
+
+(define interpret_finally
+  (λ (state statement return_state return_val continue break throw)
+    (if (null? (cadddr statement))
+        (return_state v)
+        (interpret_ast state (cadr (cadddr statement)) return_state return_val continue break throw))))
 
 (define interpret_block
   (λ (state statement return_state return_val continue break throw)
