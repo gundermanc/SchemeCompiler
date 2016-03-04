@@ -22,7 +22,7 @@
 ; filename: the name of the input file.
 (define interpret
   (λ (filename)
-    (interpret_ast '() (parser filename) (λ (v) v))))
+    (interpret_ast '() (parser filename) (λ (v) error "No return statement encountered") (λ (v) v))))
 
 ; Interprets an AST and returns a single value containing result
 ; of the program execution (whatever was returned using the return
@@ -34,10 +34,11 @@
 ; ast: a properly formed abstract syntax tree of the format output
 ;      by simpleParser.scm
 (define interpret_ast
-  (λ (state ast return)
+  (λ (state ast return_state return_val)
+    (display state)
     (if (null? ast)
-        (return state) ;; TODO: check if we saw a return.
-        (interpret_statement state (car ast) (λ (v) (return (interpret_ast v (cdr ast) return)))))))
+        (return_state state) ;; TODO: check if we saw a return.
+        (interpret_statement state (car ast) (λ (v) (interpret_ast v (cdr ast) return_state return_val)) (λ (v) v)))))
 
 ; "Private" Impl:
 ; ==========================================================
@@ -52,14 +53,20 @@
 ; ast: the abstract syntax tree.
 ; return: return continuation function.
 (define interpret_statement
-  (λ (state statement return)
+  (λ (state statement return_state return_val)
     (cond
-      ((eq? 'var (operator statement)) (return (interpret_var state statement)))
-      ((eq? '= (operator statement)) (return (interpret_assign state statement)))
-      ((eq? 'while (operator statement)) (interpret_while state statement return))
-      ((eq? 'return (operator statement)) (return (pretty_value state (operand_1 statement))))
-      ((eq? 'if (operator statement)) (interpret_if state statement return))
+      ((eq? 'var (operator statement)) (return_state (interpret_var state statement)))
+      ((eq? '= (operator statement)) (return_state (interpret_assign state statement)))
+      ((eq? 'while (operator statement)) (interpret_while state statement return_state return_val))
+      ((eq? 'return (operator statement)) (return_val (pretty_value state (operand_1 statement))))
+      ((eq? 'if (operator statement)) (interpret_if state statement return_state return_val))
+      ((eq? 'begin (operator statement)) (interpret_block state statement return))
+      ;((eq? 'continue (operator statment)) 
       (else "invalid statement"))))
+
+(define interpret_block
+  (λ (state statement return)
+    (interpret_ast state (cdr statement) return)))
 
 ; Interprets a var declaration statement from the AST and returns the updated state
 ; list.
