@@ -87,7 +87,7 @@
 
 (define interpret_catch
   (λ (state statement return_state return_val continue break throw value)
-    (interpret_ast (state_update state (caar (cdaddr statement)) value)
+    (interpret_ast (state_update state (caar (cdaddr statement)) (λ (v) v) (λ (v) v) value)
                    (cadr (cdaddr statement)) ; ast
                    return_state
                    return_val
@@ -154,7 +154,7 @@
       (else (interpret_statement state (true_statement statement) 
                                  (λ (v) (interpret_while v statement return_state return_val continue break throw))
                                  return_val
-                                 (λ (v) (interpret_while state statement return_state return_val continue break throw))
+                                 (λ (v) (interpret_while v statement return_state return_val continue break throw))
                                  (λ (v) (return_state v))
                                  throw
                                  )))))
