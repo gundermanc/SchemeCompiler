@@ -36,8 +36,8 @@
 (define interpret_ast
   (λ (state ast return)
     (if (null? ast)
-        (error "no return statement encountered")
-        (interpret_statement state (car ast) (λ (v) (return (interpret_ast state (cdr ast) return)))))))
+        (return state) ;; TODO: check if we saw a return.
+        (interpret_statement state (car ast) (λ (v) (return (interpret_ast v (cdr ast) return)))))))
 
 ; "Private" Impl:
 ; ==========================================================
@@ -55,11 +55,11 @@
   (λ (state statement return)
     (cond
       ((eq? 'var (operator statement)) (return (interpret_var state statement)))
-      ((eq? '= (operator statement)) (return (interpret_assign state statement))
+      ((eq? '= (operator statement)) (return (interpret_assign state statement)))
       ((eq? 'while (operator statement)) (interpret_while state statement return))
-      ((eq? 'return (operator statement)) (error "ahhhhhhh noooo"));(return (pretty_value state (operand_1 statement))))
-      ((eq? 'if (operator statement)) (return (interpret_if state statement)))
-      (else "invalid statement")))))
+      ((eq? 'return (operator statement)) (return (pretty_value state (operand_1 statement))))
+      ((eq? 'if (operator statement)) (interpret_if state statement return))
+      (else "invalid statement"))))
 
 ; Interprets a var declaration statement from the AST and returns the updated state
 ; list.
@@ -100,7 +100,7 @@
   (λ (state statement return)
     (cond
       ((not (value state (condition statement))) (return state))
-      (else (interpret_ast_iter state (cons (true_statement statement) '()) (λ (v) (interpret_while v statement return)))))))
+      (else (interpret_statement state (true_statement statement) (λ (v) (interpret_while v statement return)))))))
 
 ; Interprets an if statement from the AST and returns the updated state
 ; list.
@@ -110,12 +110,12 @@
 ;        execution) in the format ((K V) (K V) ..)
 ; statement: a single parsed if statement.
 (define interpret_if
-  (λ (state statement)
+  (λ (state statement return)
     (if (value state (condition statement))
-        (interpret_statement state (true_statement statement))
+        (interpret_statement state (true_statement statement) return)
         (if (has_false_statement statement)
-            (interpret_statement state (false_statement statement))
-            state))))
+            (interpret_statement state (false_statement statement) return)
+            (return state)))))
 
 ; Looks up an arithmetic or boolean function by its symbol.
 ; operator: an arithmetic or boolean operator.
