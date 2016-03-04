@@ -145,9 +145,9 @@
     (cond
       ((not (value state (condition statement))) (return_state state))
       (else (interpret_statement state (true_statement statement) 
-                                 (λ (v) (interpret_while v statement return_state return_val))
+                                 (λ (v) (interpret_while v statement return_state return_val continue break throw))
                                  return_val
-                                 (λ (v) (interpret_while state statement return_state return_val))
+                                 (λ (v) (interpret_while state statement return_state return_val continue break throw))
                                  (λ (v) (return_state state))
                                  throw
                                  )))))
@@ -164,7 +164,7 @@
         (interpret_statement state (true_statement statement) return_state return_val continue break throw)
         (if (has_false_statement statement)
             (interpret_statement state (false_statement statement) return_state return_val continue break throw)
-            (return state)))))
+            (return_state state)))))
 
 ; Looks up an arithmetic or boolean function by its symbol.
 ; operator: an arithmetic or boolean operator.
