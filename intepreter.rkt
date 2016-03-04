@@ -1,9 +1,9 @@
-; EECS 345 Programming Project, Part 1
+; EECS 345 Programming Project, Part 1 + 2
 ; Case Western Reserve Univ.
 ;
 ; Christian Gunderman
 ; Elliot Essman
-; 2 Feb. 2016
+; 4 Mar. 2016
 
 ; External dependencies
 ; ==========================================================
@@ -22,11 +22,12 @@
 ; filename: the name of the input file.
 (define interpret
   (λ (filename)
-    (interpret_ast '() (parser filename)
+    (interpret_ast (state_push_scope '()) (parser filename)
                    (λ (v) (error "No return statement encountered"))
                    (λ (v) v)
                    (λ (v) (error "Continue encountered outside of loop"))
-                   (λ (v) (error "Break encountered outside of loop")))))
+                   (λ (v) (error "Break encountered outside of loop"))
+                   (λ (s v) (error "Uncaught throw")))))
 
 ; Interprets an AST and returns a single value containing result
 ; of the program execution (whatever was returned using the return
@@ -38,14 +39,15 @@
 ; ast: a properly formed abstract syntax tree of the format output
 ;      by simpleParser.scm
 (define interpret_ast
-  (λ (state ast return_state return_val continue break)
+  (λ (state ast return_state return_val continue break throw)
     (if (null? ast)
-        (return_state state) ;; TODO: check if we saw a return.
-        (interpret_statement state (car ast) 
-                    (λ (v) (interpret_ast v (cdr ast) return_state return_val continue break))
+        (return_state state)
+        (interpret_statement state (car ast)
+                    (λ (v) (interpret_ast v (cdr ast) return_state return_val continue break throw))
                     return_val
                     continue
-                    break))))
+                    break
+                    throw))))
 
 ; "Private" Impl:
 ; ==========================================================
@@ -60,21 +62,51 @@
 ; ast: the abstract syntax tree.
 ; return: return continuation function.
 (define interpret_statement
-  (λ (state statement return_state return_val continue break)
+  (λ (state statement return_state return_val continue break throw)
     (cond
       ((eq? 'var (operator statement)) (return_state (interpret_var state statement)))
       ((eq? '= (operator statement)) (return_state (interpret_assign state statement)))
-      ((eq? 'while (operator statement)) (interpret_while state statement return_state return_val continue break))
+      ((eq? 'while (operator statement)) (interpret_while state statement return_state return_val continue break throw))
       ((eq? 'return (operator statement)) (return_val (pretty_value state (operand_1 statement))))
-      ((eq? 'if (operator statement)) (interpret_if state statement return_state return_val continue break))
-      ((eq? 'begin (operator statement)) (interpret_block state statement return_state return_val continue break))
+      ((eq? 'if (operator statement)) (interpret_if state statement return_state return_val continue break throw))
+      ((eq? 'begin (operator statement)) (interpret_block state statement return_state return_val continue break throw))
       ((eq? 'continue (operator statement)) (continue state))
       ((eq? 'break (operator statement)) (break state))
+      ((eq? 'try (operator statement)) (interpret_try state statement return_state return_val continue break throw))
+      ((eq? 'throw (operator statement)) (throw state (value state (operand_1 statement))))
       (else "invalid statement"))))
 
+(define interpret_try
+  (λ (state statement return_state return_val continue break throw)
+    (interpret_ast state (cadr statement)
+                   (λ (v) (interpret_finally v statement return_state return_val continue break throw))
+                   return_val
+                   continue
+                   break
+                   (λ (s v) (interpret_catch s statement return_state return_val continue break throw v))))) ; TODO: scope exception var so it doesn't escape. Will probably need to push a scope here.
+
+(define interpret_catch
+  (λ (state statement return_state return_val continue break throw value)
+    (interpret_ast (state_update state (caar (cdaddr statement)) value)
+                   (cadr (cdaddr statement)) ; ast
+                   return_state
+                   return_val
+                   continue
+                   break
+                   throw)))
+
+(define interpret_finally
+  (λ (state statement return_state return_val continue break throw)
+    (if (null? (cadddr statement))
+        (return_state v)
+        (interpret_ast state (cadr (cadddr statement)) return_state return_val continue break throw))))
+
 (define interpret_block
-  (λ (state statement return_state return_val continue break)
-    (interpret_ast state (cdr statement) return_state return_val continue break)))
+  (λ (state statement return_state return_val continue break throw)
+    (interpret_ast (state_push_scope state) (cdr statement)
+                   (λ (v) (return_state (state_pop_scope v)))
+                   return_val
+                   continue break throw))) ;TODO: continnue, break, throw might not change scope properly.
 
 ; Interprets a var declaration statement from the AST and returns the updated state
 ; list.
@@ -85,10 +117,12 @@
 ; statement: a single parsed var statement.
 (define interpret_var
   (λ (state statement)
-    (cond
-      ((state_exists state (operand_1 statement)) (error "variable already declared"))
-      ((has_operand_2 statement) (state_update state (operand_1 statement) (value state (operand_2 statement))))
-      (else (state_update state (operand_1 statement) null)))))
+    (state_update state (operand_1 statement) 0
+                  (λ (v) (error "variable already declared"))
+                  (λ (v) (state_add state  (operand_1 statement)
+                                    (if (has_operand_2 statement)
+                                                 (value state (operand_2 statement))
+                                                 null))))))
 
 ; Interprets a var assign statement from the AST and returns the updated state
 ; list.
@@ -99,9 +133,9 @@
 ; statement: a single parsed assign statement.
 (define interpret_assign
   (λ (state statement)
-    (if (state_exists state (operand_1 statement))
-        (state_update state (operand_1 statement) (value state (operand_2 statement)))
-        (error "Undeclared variable in assignment"))))
+    (state_update state (operand_1 statement) (value state (operand_2 statement))
+                  (λ (v) v)
+                  (λ (v) (error "undeclared variable in assignment")))))
 
 ; Interprets a while statement from the AST and returns the updated state
 ; list.
@@ -112,14 +146,15 @@
 ; statement: a single parsed while statement.
 ; return: a continuation function.
 (define interpret_while
-  (λ (state statement return_state return_val continue break)
+  (λ (state statement return_state return_val continue break throw)
     (cond
       ((not (value state (condition statement))) (return_state state))
       (else (interpret_statement state (true_statement statement) 
-                                 (λ (v) (interpret_while v statement return_state return_val continue break))
+                                 (λ (v) (interpret_while v statement return_state return_val continue break throw))
                                  return_val
-                                 (λ (v) (interpret_while v statement return_state return_val continue break))
+                                 (λ (v) (interpret_while state statement return_state return_val continue break throw))
                                  (λ (v) (return_state v))
+                                 throw
                                  )))))
 ; Interprets an if statement from the AST and returns the updated state
 ; list.
@@ -129,12 +164,12 @@
 ;        execution) in the format ((K V) (K V) ..)
 ; statement: a single parsed if statement.
 (define interpret_if
-  (λ (state statement return_state return_val continue break)
+  (λ (state statement return_state return_val continue break throw)
     (if (value state (condition statement))
-        (interpret_statement state (true_statement statement) return_state return_val continue break)
+        (interpret_statement state (true_statement statement) return_state return_val continue break throw)
         (if (has_false_statement statement)
-            (interpret_statement state (false_statement statement) return_state return_val continue break)
-            (return state)))))
+            (interpret_statement state (false_statement statement) return_state return_val continue break throw)
+            (return_state state)))))
 
 ; Looks up an arithmetic or boolean function by its symbol.
 ; operator: an arithmetic or boolean operator.
@@ -226,52 +261,61 @@
   (λ (expression)
     (not (null? (cddr expression)))))
 
-; Checks if the given name exists in the state list.
-; Returns: true if the name exists, false if it does not.
-(define state_exists
-  (λ (s name)
+(define state_level_value
+  (λ (s name return notfound)
     (cond
-      ((null? s) #f)
-      ((eq? (caar s) name) #t)
-      (else (state_exists (cdr s) name)))))
+      ((null? s) (notfound))
+      ((eq? (caar s) name) (return (cadar s)))
+      (else (state_level_value (cdr s) name return notfound)))))
 
-; Gets the value of the given name from the state list.
-; Returns: the value. Behavior on name not mapped is undefined.
 (define state_value
   (λ (s name)
-    (cond
-      ((null? s) (error "undefined variable"))
-      ((eq? (caar s) name) (if (null? (cadar s))
-                               (error "uninitialized variable")
-                               (cadar s)))
-      (else (state_value (cdr s) name)))))
+    (if (null? s)
+        (error "undefined variable" name)
+        (state_level_value (car s) name
+                           (λ (v) (if (null? v)
+                                      (error "variable used before initialization")
+                                      v))
+                           (λ () (state_value (cdr s) name))))))
 
 ; Adds the specified value to the state s mapped to the specified variable
 ; Returns: the updated state. This does not remove existing mappings of name.
 (define state_add
   (λ (s name value)
+    (cons (state_level_add (car s) name value) s)))
+
+(define state_level_add
+  (λ (s name value)
     (cons (cons name (cons value '())) s)))
 
-; Removes all instances of the specified value from the state s if it exists.
-; Returns the updated state.
-(define state_remove
-  (λ (s name)
+(define state_level_replace
+  (λ (state name value replaced notreplaced)
     (cond
-      ((null? s) '())
-      ((eq? (caar s) name) (cdr s))
-      (else (cons (car s) (state_remove (cdr s) name))))))
+      ((null? state) (notreplaced '()))
+      ((eq? (caar state) name) (replaced (cons (cons (caar state) (cons value '())) (cdr state))))
+      (else (state_level_replace (cdr state) name value
+                                 (λ (s) (replaced (cons (car state) s)))
+                                 (λ (s) (notreplaced (cons (car state) s))))))))
 
-; Adds or updates a mapping from name to value in state s
-; and returns the updated state.
-; This is the preferred way to mapping a name to a state value.
 (define state_update
-  (λ (s name value)
-    (state_add (state_remove s name) name value)))
+  (λ (state name value updated notupdated)
+    (cond
+      ((null? state) (notupdated '()))
+      ((null? (car state)) (notupdated '()))
+      (else (state_level_replace (car state) name value
+                                 (λ (s) (updated (cons s (cdr state))))
+                                 (λ (s) (state_update (cdr state) name value
+                                                      (λ (s2) (updated (cons s s2)))
+                                                      (λ (s2) (notupdated (cons s s2))))))))))
 
-(define state_push
-  (λ (state)
-    ((cons '() state))))
+; Pushes a new scoping level onto the state.
+; s: the state to modify.
+; Returns: the updated state.
+(define state_push_scope
+  (λ (s)
+    (cons '() s)))
 
-(define state_pop
-  (λ (state)
-    ((cdr state))))
+; Pops a scoping level from the state.
+; s: the state to modify.
+; Returns: the updated state.
+(define state_pop_scope cdr)
