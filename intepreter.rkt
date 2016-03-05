@@ -17,7 +17,8 @@
 ; statement that was executed.
 ; Throws an error if: no return statement in control flow path or
 ; variables are used before being declared, variables are declared
-; multiple times.
+; multiple times, break or continue statement is encountered outside
+; of loop, or a throw statement is outside of a try/catch block. 
 ;
 ; filename: the name of the input file.
 (define interpret
@@ -29,116 +30,181 @@
                    (λ (v) (error "Break encountered outside of loop"))
                    (λ (s v) (error "Uncaught throw")))))
 
-; Interprets an AST and returns a single value containing result
-; of the program execution (whatever was returned using the return
-; statement that was executed. Assumes correct AST format.
-; Throws an error if: no return statement in control flow path or
-; variables are used before being declared, variables are declared
-; multiple times.
-;
-; ast: a properly formed abstract syntax tree of the format output
-;      by simpleParser.scm
-(define interpret_ast
-  (λ (state ast return_state return_val continue break throw)
-    (if (null? ast)
-        (return_state state)
-        (interpret_statement state (car ast)
-                    (λ (v) (interpret_ast v (cdr ast) return_state return_val continue break throw))
-                    return_val
-                    continue
-                    break
-                    throw))))
-
 ; "Private" Impl:
 ; ==========================================================
 
-; Interprets a single statement from the AST and returns the updated state
-; list containing values for variables.
-; Throws an error if: variables are used before being declared or
-; variables are declared multiple times.
+; Interprets an AST.
 ;
-; state: a list containing the current state (an empty list for first
-;        execution) in the format ((K V) (K V) ..)
-; ast: the abstract syntax tree.
-; return: return continuation function.
+; Throws an error if: no return statement in control flow path or
+; variables are used before being declared, variables are declared
+; multiple times, break or continue statement is encountered outside
+; of loop, or a throw statement is outside of a try/catch block.
+;
+; state: the current program state.
+; ast: a properly formed abstract syntax tree of the format output
+;      by simpleParser.scm
+; state_cont: State continuation function.
+; continue_cont: continue continuation function.
+; return_cont: return continuation function.
+; break_cont: break continuation function.
+; throw_cont: throw_continuation function.
+(define interpret_ast
+  (λ (state ast state_cont return_cont continue_cont break_cont throw_cont)
+    (if (null? ast)
+        (state_cont state)
+        (interpret_statement state (current_statement ast)
+                             (λ (v) (interpret_ast v (remaining_statement ast) state_cont return_cont continue_cont break_cont throw_cont))
+                             return_cont
+                             continue_cont
+                             break_cont
+                             throw_cont))))
+
+; Interprets a single statement from the AST and updates the state.
+; 
+; Throws an error if: no return statement in control flow path or
+; variables are used before being declared, variables are declared
+; multiple times, break or continue statement is encountered outside
+; of loop, or a throw statement is outside of a try/catch block.
+;
+;
+; state: the current program state.
+; statement: a properly formed abstract syntax tree statement.
+; state_cont: State continuation function.
+; continue_cont: continue continuation function.
+; return_cont: return continuation function.
+; break_cont: break continuation function.
+; throw_cont: throw_continuation function.
 (define interpret_statement
-  (λ (state statement return_state return_val continue break throw)
+  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont)
     (cond
-      ((eq? 'var (operator statement)) (return_state (interpret_var state statement)))
-      ((eq? '= (operator statement)) (return_state (interpret_assign state statement)))
-      ((eq? 'while (operator statement)) (interpret_while state statement return_state return_val continue break throw))
-      ((eq? 'return (operator statement)) (return_val (pretty_value state (operand_1 statement))))
-      ((eq? 'if (operator statement)) (interpret_if state statement return_state return_val continue break throw))
-      ((eq? 'begin (operator statement)) (interpret_block state statement return_state return_val continue break throw))
-      ((eq? 'continue (operator statement)) (continue state))
-      ((eq? 'break (operator statement)) (break state))
-      ((eq? 'try (operator statement)) (interpret_try state statement return_state return_val continue break throw))
-      ((eq? 'throw (operator statement)) (throw state (value state (operand_1 statement))))
+      ((eq? 'var (operator statement)) (state_cont (interpret_var state statement)))
+      ((eq? '= (operator statement)) (state_cont (interpret_assign state statement)))
+      ((eq? 'while (operator statement)) (interpret_while state statement state_cont return_cont continue_cont break_cont throw_cont))
+      ((eq? 'return (operator statement)) (return_cont (pretty_value state (operand_1 statement))))
+      ((eq? 'if (operator statement)) (interpret_if state statement state_cont return_cont continue_cont break_cont throw_cont))
+      ((eq? 'begin (operator statement)) (interpret_block state statement state_cont return_cont continue_cont break_cont throw_cont))
+      ((eq? 'continue (operator statement)) (continue_cont state))
+      ((eq? 'break (operator statement)) (break_cont state))
+      ((eq? 'try (operator statement)) (interpret_try state statement state_cont return_cont continue_cont break_cont throw_cont))
+      ((eq? 'throw (operator statement)) (throw_cont state (value state (operand_1 statement))))
       (else "invalid statement"))))
 
+; Interprets a try/catch/finally block/statement.
+;
+; Throws an error if: no return statement in control flow path or
+; variables are used before being declared, variables are declared
+; multiple times, break or continue statement is encountered outside
+; of loop, or a throw statement is outside of a try/catch block.
+;
+;
+; state: the current program state.
+; statement: a properly formed abstract syntax tree try/catch/finally statement.
+; state_cont: State continuation function.
+; continue_cont: continue continuation function.
+; return_cont: return continuation function.
+; break_cont: break continuation function.
+; throw_cont: throw_continuation function.
 (define interpret_try
-  (λ (state statement return_state return_val continue break throw)
+  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont)
     (interpret_ast state (cadr statement)
-                   (λ (v) (interpret_finally v statement return_state return_val continue break throw))
-                   return_val
-                   continue
-                   break
+                   (λ (v) (interpret_finally v statement state_cont return_cont continue_cont break_cont throw_cont))
+                   return_cont
+                   continue_cont
+                   break_cont
                    (λ (s v) (interpret_catch s statement
                                              (λ (v) (interpret_finally v statement
-                                                                       return_state
-                                                                       return_val
-                                                                       continue
-                                                                       break
-                                                                       throw))
-                                             return_val continue break throw v)))))
+                                                                       state_cont
+                                                                       return_cont
+                                                                       continue_cont
+                                                                       break_cont
+                                                                       throw_cont))
+                                             return_cont continue_cont break_cont throw_cont v)))))
 
-(define interpret_catch
-  (λ (state statement return_state return_val continue break throw value)
-    (interpret_ast (state_add (state_push_scope state) (caar (cdaddr statement)) value)
-                   (cadr (cdaddr statement)) ; ast
-                   (λ (v) (return_state (state_pop_scope v)))
-                   return_val
-                   (λ (v) (continue (state_pop_scope v)))
-                   (λ (v) (break (state_pop_scope v)))
-                   (λ (s v) (throw (state_pop_scope s) v)))))
-
-(define interpret_finally
-  (λ (state statement return_state return_val continue break throw)
-    (if (null? (cadddr statement))
-        (return_state state)
-        (interpret_ast state (cadr (cadddr statement)) return_state return_val continue break throw))))
-
-(define interpret_block
-  (λ (state statement return_state return_val continue break throw)
-    (interpret_ast (state_push_scope state) (cdr statement)
-                   (λ (v) (return_state (state_pop_scope v)))
-                   return_val
-                   (λ (v) (continue (state_pop_scope v)))
-                   (λ (v) (break (state_pop_scope v)))
-                   (λ (s v) (throw (state_pop_scope s) v)))))
-
-; Interprets a var declaration statement from the AST and returns the updated state
-; list.
-; Throws an error if: variables are declared multiple times or have not been assigned.
+; Interprets a catch block/statement.
+; Throws an error if: no return statement in control flow path or
+; variables are used before being declared, variables are declared
+; multiple times, break or continue statement is encountered outside
+; of loop, or a throw statement is outside of a try/catch block.
 ;
-; state: a list containing the current state (an empty list for first
-;        execution) in the format ((K V) (K V) ..)
-; statement: a single parsed var statement.
+;
+; state: the current program state.
+; statement: a properly formed abstract syntax tree try/catch/finally statement.
+; state_cont: State continuation function.
+; continue_cont: continue continuation function.
+; return_cont: return continuation function.
+; break_cont: break continuation function.
+; throw_cont: throw_continuation function.
+(define interpret_catch
+  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont value)
+    (interpret_ast (state_add (state_push_scope state) (catch_var statement) value)
+                   (try_block statement)
+                   (λ (v) (state_cont (state_pop_scope v)))
+                   return_cont
+                   (λ (v) (continue_cont (state_pop_scope v)))
+                   (λ (v) (break_cont (state_pop_scope v)))
+                   (λ (s v) (throw_cont (state_pop_scope s) v)))))
+
+; Interprets a finally block/statement.
+; Throws an error if: no return statement in control flow path or
+; variables are used before being declared, variables are declared
+; multiple times, break or continue statement is encountered outside
+; of loop, or a throw statement is outside of a try/catch block.
+;
+;
+; state: the current program state.
+; statement: a properly formed abstract syntax tree try/catch/finally statement.
+; state_cont: State continuation function.
+; continue_cont: continue continuation function.
+; return_cont: return continuation function.
+; break_cont: break continuation function.
+; throw_cont: throw_continuation function.
+(define interpret_finally
+  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont)
+    (if (null? (finally_stmt statement))
+        (state_cont state)
+        (interpret_ast state (finally_block statement) state_cont return_cont continue_cont break_cont throw_cont))))
+
+; Interprets a block statement.
+; Throws an error if: no return statement in control flow path or
+; variables are used before being declared, variables are declared
+; multiple times, break or continue statement is encountered outside
+; of loop, or a throw statement is outside of a try/catch block.
+;
+;
+; state: the current program state.
+; statement: a properly formed abstract syntax tree block statement.
+; state_cont: State continuation function.
+; continue_cont: continue continuation function.
+; return_cont: return continuation function.
+; break_cont: break continuation function.
+; throw_cont: throw_continuation function.
+(define interpret_block
+  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont)
+    (interpret_ast (state_push_scope state) (cdr statement)
+                   (λ (v) (state_cont (state_pop_scope v)))
+                   return_cont
+                   (λ (v) (continue_cont (state_pop_scope v)))
+                   (λ (v) (break_cont (state_pop_scope v)))
+                   (λ (s v) (throw_cont (state_pop_scope s) v)))))
+
+; Interprets a var declaration.
+; Throws an error if: variables are declared multiple times.
+;
+; state: the current program state.
+; statement: a properly formed abstract syntax tree block statement.
 (define interpret_var
   (λ (state statement)
     (state_update state (operand_1 statement) 0
                   (λ (v) (error "variable already declared:" (operand_1 statement)))
                   (λ (v) (state_add state  (operand_1 statement)
                                     (if (has_operand_2 statement)
-                                                 (value state (operand_2 statement))
-                                                 null))))))
+                                        (value state (operand_2 statement))
+                                        null))))))
 
-; Interprets a var assign statement from the AST and returns the updated state
-; list.
+; Interprets a var assign statement from the AST and returns the updated state.
 ; Throws an error if: variable has not yet been declared.
 ;
-; state: a list containing the current state (an empty list for first
-;        execution) in the format ((K V) (K V) ..)
+; state: a list containing the current state.
 ; statement: a single parsed assign statement.
 (define interpret_assign
   (λ (state statement)
@@ -146,39 +212,51 @@
                   (λ (v) v)
                   (λ (v) (error "undeclared variable in assignment")))))
 
-; Interprets a while statement from the AST and returns the updated state
-; list.
-; Throws an error if: variable has not yet been declared.
+; Interprets a while loop.
+; Throws an error if: no return statement in control flow path or
+; variables are used before being declared, variables are declared
+; multiple times, break or continue statement is encountered outside
+; of loop, or a throw statement is outside of a try/catch block.
 ;
-; state: a list containing the current state (an empty list for first
-;        execution) in the format ((K V) (K V) ..)
-; statement: a single parsed while statement.
-; return: a continuation function.
+; state: the current program state.
+; statement: a properly formed abstract syntax tree while loop.
+; state_cont: State continuation function.
+; continue_cont: continue continuation function.
+; return_cont: return continuation function.
+; break_cont: break continuation function.
+; throw_cont: throw_continuation function.
 (define interpret_while
-  (λ (state statement return_state return_val continue break throw)
+  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont)
     (cond
-      ((not (value state (condition statement))) (return_state state))
+      ((not (value state (condition statement))) (state_cont state))
       (else (interpret_statement state (true_statement statement) 
-                                 (λ (v) (interpret_while v statement return_state return_val continue break throw))
-                                 return_val
-                                 (λ (v) (interpret_while v statement return_state return_val continue break throw))
-                                 (λ (v) (return_state v))
-                                 throw
-                                 )))))
-; Interprets an if statement from the AST and returns the updated state
-; list.
-; Throws an error if: variable has not yet been declared or duplicate declaration.
+                                 (λ (v) (interpret_while v statement state_cont return_cont continue_cont break_cont throw_cont))
+                                 return_cont
+                                 (λ (v) (interpret_while v statement state_cont return_cont continue_cont break_cont throw_cont))
+                                 (λ (v) (state_cont v))
+                                 throw_cont)))))
+
+; Interprets an if statement.
+; Throws an error if: no return statement in control flow path or
+; variables are used before being declared, variables are declared
+; multiple times, break or continue statement is encountered outside
+; of loop, or a throw statement is outside of a try/catch block.
 ;
-; state: a list containing the current state (an empty list for first
-;        execution) in the format ((K V) (K V) ..)
-; statement: a single parsed if statement.
+;
+; state: the current program state.
+; statement: a properly formed abstract syntax tree if statement.
+; state_cont: State continuation function.
+; continue_cont: continue continuation function.
+; return_cont: return continuation function.
+; break_cont: break continuation function.
+; throw_cont: throw_continuation function.
 (define interpret_if
-  (λ (state statement return_state return_val continue break throw)
+  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont)
     (if (value state (condition statement))
-        (interpret_statement state (true_statement statement) return_state return_val continue break throw)
+        (interpret_statement state (true_statement statement) state_cont return_cont continue_cont break_cont throw_cont)
         (if (has_false_statement statement)
-            (interpret_statement state (false_statement statement) return_state return_val continue break throw)
-            (return_state state)))))
+            (interpret_statement state (false_statement statement) state_cont return_cont continue_cont break_cont throw_cont)
+            (state_cont state)))))
 
 ; Looks up an arithmetic or boolean function by its symbol.
 ; operator: an arithmetic or boolean operator.
@@ -242,6 +320,30 @@
 ; Helper functions:
 ; ==========================================================
 
+; Gets the finally portion of the try/catch block/statement.
+(define finally_stmt cadddr)
+
+; Gets the finally code block from the try/catch statement.
+(define finally_block
+  (λ (statement)
+    (cadr (finally_stmt statement))))
+
+; Gets the catch var from the try/catch block/statement.
+(define catch_var
+  (λ (statement)
+    (caar (cdaddr statement))))
+
+; Gets the try code block from the try/catch statement.
+(define try_block
+  (λ (statement)
+    (cadr (cdaddr statement))))
+
+; Gets the current statement from an AST.
+(define current_statement car)
+
+; Gets the remaining statements after the current from an AST.
+(define remaining_statements cdr)
+
 ; Gets the condition of an IF or WHILE.
 (define condition cadr)
 
@@ -270,13 +372,25 @@
   (λ (expression)
     (not (null? (cddr expression)))))
 
+; Gets the value of a variable in a specific level of the state.
+; s: state scope level list.
+; name: the name of the variable.
+; return_cont: the return continuation for the value.
+; nonfound_cont: the continatuion for values that were not able to be found.
 (define state_level_value
-  (λ (s name return notfound)
+  (λ (s name return_cont notfound_cont)
     (cond
-      ((null? s) (notfound))
-      ((eq? (caar s) name) (return (cadar s)))
-      (else (state_level_value (cdr s) name return notfound)))))
+      ((null? s) (notfound_cont))
+      ((eq? (caar s) name) (return_cont (cadar s)))
+      (else (state_level_value (cdr s) name return_cont notfound_cont)))))
 
+; Iterates the stack of scopes in the state, starting from current and going up
+; to find the value of the given var.
+; s: the state
+; name: the name of the variable.
+; Returns the variable.
+; Throws: undefined var if it doesn't exist or used before initialization if the
+; var was declared without a initial value.
 (define state_value
   (λ (s name)
     (if (null? s)
@@ -288,36 +402,55 @@
                            (λ () (state_value (cdr s) name))))))
 
 ; Adds the specified value to the state s mapped to the specified variable
+; in the current scope.
 ; Returns: the updated state. This does not remove existing mappings of name.
 (define state_add
   (λ (s name value)
     (cons (state_level_add (car s) name value) (cdr s))))
 
+; Adds the specified value to the given level of the state.
+; s: a state level.
+; name: the name of the variable.
+; value: the value to map to the name.
 (define state_level_add
   (λ (s name value)
     (cons (cons name (cons value '())) s)))
 
+; Iterates through the current level of the scope, heading out
+; until it locates the existing mapping for the variable and replaces it.
+; state: the state.
+; name: the name of the variable.
+; value: the new value.
+; replaced_cont: the continuation for if the value was replaced.
+; notreplaced_cont: the continuation for if the value was not replaced.
 (define state_level_replace
-  (λ (state name value replaced notreplaced)
+  (λ (state name value replaced_cont notreplaced_cont)
     (cond
-      ((null? state) (notreplaced '()))
-      ((eq? (caar state) name) (replaced (cons (cons (caar state) (cons value '())) (cdr state))))
+      ((null? state) (notreplaced_cont '()))
+      ((eq? (caar state) name) (replaced_cont (cons (cons (caar state) (cons value '())) (cdr state))))
       (else (state_level_replace (cdr state) name value
-                                 (λ (s) (replaced (cons (car state) s)))
-                                 (λ (s) (notreplaced (cons (car state) s))))))))
+                                 (λ (s) (replaced_cont (cons (car state) s)))
+                                 (λ (s) (notreplaced_cont (cons (car state) s))))))))
 
+; Iterates through the levels of the scope, starting from current, heading out
+; until it locates the existing mapping for the variable and replaces it.
+; state: the state.
+; name: the name of the variable.
+; value: the new value.
+; updated_cont: the continuation for if the value was replaced.
+; notupdated_cont: the continuation for if the value was not replaced.
 (define state_update
-  (λ (state name value updated notupdated)
+  (λ (state name value updated_cont notupdated_cont)
     (cond
       ((null? state) (notupdated '()))
       ((null? (car state)) (state_update (cdr state) name value
-                                         (λ (s2) (updated (cons (car state) s2)))
-                                         (λ (s2) (notupdated (cons (car state) s2)))))
+                                         (λ (s2) (updated_cont (cons (car state) s2)))
+                                         (λ (s2) (notupdated_cont (cons (car state) s2)))))
       (else (state_level_replace (car state) name value
-                                 (λ (s) (updated (cons s (cdr state))))
+                                 (λ (s) (updated_conts (cons s (cdr state))))
                                  (λ (s) (state_update (cdr state) name value
-                                                      (λ (s2) (updated (cons s s2)))
-                                                      (λ (s2) (notupdated (cons s s2))))))))))
+                                                      (λ (s2) (updated_cont (cons s s2)))
+                                                      (λ (s2) (notupdated_cont (cons s s2))))))))))
 
 ; Pushes a new scoping level onto the state.
 ; s: the state to modify.
