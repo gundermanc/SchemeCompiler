@@ -291,7 +291,7 @@
 ; Returns: the updated state. This does not remove existing mappings of name.
 (define state_add
   (λ (s name value)
-    (cons (state_level_add (car s) name value) s)))
+    (cons (state_level_add (car s) name value) (cdr s))))
 
 (define state_level_add
   (λ (s name value)
