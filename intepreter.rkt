@@ -53,7 +53,7 @@
     (if (null? ast)
         (state_cont state)
         (interpret_statement state (current_statement ast)
-                             (λ (v) (interpret_ast v (remaining_statement ast) state_cont return_cont continue_cont break_cont throw_cont))
+                             (λ (v) (interpret_ast v (remaining_statements ast) state_cont return_cont continue_cont break_cont throw_cont))
                              return_cont
                              continue_cont
                              break_cont
@@ -442,12 +442,12 @@
 (define state_update
   (λ (state name value updated_cont notupdated_cont)
     (cond
-      ((null? state) (notupdated '()))
+      ((null? state) (notupdated_cont '()))
       ((null? (car state)) (state_update (cdr state) name value
                                          (λ (s2) (updated_cont (cons (car state) s2)))
                                          (λ (s2) (notupdated_cont (cons (car state) s2)))))
       (else (state_level_replace (car state) name value
-                                 (λ (s) (updated_conts (cons s (cdr state))))
+                                 (λ (s) (updated_cont (cons s (cdr state))))
                                  (λ (s) (state_update (cdr state) name value
                                                       (λ (s2) (updated_cont (cons s s2)))
                                                       (λ (s2) (notupdated_cont (cons s s2))))))))))
