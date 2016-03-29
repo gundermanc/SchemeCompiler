@@ -452,6 +452,10 @@
                                                       (λ (s2) (updated_cont (cons s s2)))
                                                       (λ (s2) (notupdated_cont (cons s s2))))))))))
 
+
+;;;;;;;;;;;;;;; TBD DELETE THIS STUFF ;;;;;;;;;;;;;;;;;;;;;;
+
+
 ; Pushes a new scoping level onto the state.
 ; s: the state to modify.
 ; Returns: the updated state.
@@ -463,3 +467,78 @@
 ; s: the state to modify.
 ; Returns: the updated state.
 (define state_pop_scope cdr)
+
+
+
+
+
+
+
+
+
+;;;;;;;;;;;;;;; FINALIZED UPDATED FROM HERE ON ;;;;;;;;;;;;;;;;;;;;;;
+
+
+; Builds a new, empty environment list for containing a list of functions
+;
+; Format: ((func_pairs) (state_list) Example: ((foo (code)) (((x 3) (y 2)) ((z 1)))
+; functions: a list of key value pairs containing functions and code.
+; state: a list of scopes containing variable definitions.
+; Throws: No error checking. Be very careful that inputs are the correct form.
+(define env_build
+  (λ (functions state)
+    (cons functions (cons state '()))))
+
+; Pushes a new environment to the environment stack (list). Env should be constructed
+; with env_build or similar.
+;
+; env: See env_build for format info.
+; Throws: No error checking. Be very careful that inputs are the correct form.
+(define env_push
+  (λ (env)
+    (cons (env_build '() '()) env)))
+
+; Pops an environment from the environment stack (list).
+; Throws: No error checking. Be very careful that inputs are the correct form.
+(define env_pop cdr)
+
+; Returns the list of functions from the current environment.
+;
+; env: the stack (list) of environments.
+; Format: ((func1_name (code)) (func2_name (code)) ...)
+; Throws: No error checking. Be very careful that inputs are the correct form.
+(define env_current_funcs caar)
+
+; Returns the state for the current environment.
+; env: the stack (list) of environments.
+; Format: ((nscope) (n-1scope) (n-2scope) ...)
+; Throws: No error checking. Be very careful that inputs are the correct form.
+(define env_current_state cadar)
+
+; Pushes a new scope into the current environment on the env stack (list).
+; env: The environment stack (list).
+; Format: See env_build for more info.
+; Throws: No error checking. Be very careful that inputs are the correct form.
+(define env_scope_push
+  (λ (env)
+    (cons (env_build (env_current_funcs env) (state_scope_push (env_current_state env))) (env_pop env))))
+
+; Pops new scope from the current environment on the env stack (list).
+; env: The environment stack (list).
+; Format: See env_build for more info.
+; Throws: No error checking. Be very careful that inputs are the correct form.
+(define env_scope_pop
+  (λ (env)
+    (cons (env_build (env_current_funcs env) (state_scope_pop (env_current_state env))) (env_pop env))))
+
+; Pushes a new scoping level onto the state.
+; s: the state to modify.
+; Returns: the updated state.
+(define state_scope_push
+  (λ (s)
+    (cons '() s)))
+
+; Pops a scoping level from the state.
+; s: the state to modify.
+; Returns: the updated state.
+(define state_scope_pop cdr)
