@@ -25,7 +25,7 @@
                           continue_cont   ; TODO: this shouldn't be possible.
                           break_cont      ; TODO: this shouldn't be possible.
                           throw_cont))
-     (λ (v) (return_value v))
+     (λ (v) (tuple_value v))
      (λ (v) (error "Continue encountered outside of loop"))
      (λ (v) (error "Break encountered outside of loop"))
      (λ (s v) (error "Uncaught throw")))))
@@ -55,7 +55,8 @@
     (cond
       ((eq? 'var (operator statement)) (interpret_var env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test.
       ((eq? 'function (operator statement)) (interpret_function env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test
-      ((eq? 'return (operator statement)) (return_cont (build_return env (value env (operand_1 statement)))))
+      ((eq? 'return (operator statement)) (value env (operand_1 statement) (λ (value env) (return_cont (build_tuple env value)))))
+      ((eq? 'funcall (operator statement)) (call_function env (operand_1 statement) '() env_cont (λ (v) (env_cont (tuple_env v))) continue_cont break_cont throw_cont))
       (else (error "invalid body statement" (operator statement))))))
 
 (define interpret_function
@@ -260,14 +261,14 @@
 
 (define interpret_var
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
-    (env_cont
-     (env_current_value_update env
-                               (operand_1 statement) 0
-                               (λ (v) (error "variable already declared:" (operand_1 statement)))
-                               (λ (v) (env_current_value_add env  (operand_1 statement)
-                                                             (if (has_operand_2 statement)
-                                                                 (value (env_current_state env) (operand_2 statement))
-                                                                 null)))))))
+    (env_current_value_update env
+                              (operand_1 statement) 0
+                              (λ (v) (error "variable already declared:" (operand_1 statement)))
+                              (λ (v) (if (has_operand_2 statement)
+                                         (value env
+                                                (operand_2 statement)
+                                                (λ (value env) (env_cont (env_current_value_add env (operand_1 statement) value))))
+                                         (env_cont null))))))
 
 ; Interprets a var assign statement from the AST and returns the updated state.
 ; Throws an error if: variable has not yet been declared.
@@ -361,18 +362,21 @@
 ; operation is attempted.
 ; Returns: the value of the expression.
 (define value
-  (λ (env expression)
+  (λ (env expression result_cont)
     (cond
-      ((number? expression) expression)
-      ((eq? 'true expression) #t)
-      ((eq? 'false expression) #f)
-      ((not (list? expression)) (env_current_value env expression))
-      ((not (has_operand_2 expression))((operation_function (operator expression))
+      ((number? expression) (result_cont expression env))
+      ((eq? 'true expression) (result_cont #t env))
+      ((eq? 'false expression) (result_cont #f env))
+      ((eq? 'funcall expression) ((λ (tuple)
+                                    (result_cont (tuple_value tuple) (tuple_env tuple)))
+                                  (call_function env (operand_1 statement) '() env_cont (λ (v) (env_cont (tuple_env v))))))
+      ((not (list? expression)) (result_cont (env_current_value env expression) env))
+      ((not (has_operand_2 expression)) (result_cont ((operation_function (operator expression))
              0
-             (value env (operand_1 expression))))
-      (else ((operation_function (operator expression))
+             (value env (operand_1 expression)))))
+      (else (result_cont ((operation_function (operator expression))
              (value env (operand_1 expression))
-             (value env (operand_2 expression)))))))
+             (value env (operand_2 expression))))))))
 
 ; Wraps the value function such as to return non-lisp versions
 ; of boolean values.
@@ -388,12 +392,12 @@
 ; Helper functions:
 ; ==========================================================
 
-(define build_return
+(define build_tuple
   (λ (env value)
     (cons env (cons value '()))))
 
-(define return_env car)
-(define return_value cadr)
+(define tuple_env car)
+(define tuple_value cadr)
 
 ; Gets the finally portion of the try/catch block/statement.
 (define finally_stmt cadddr)
