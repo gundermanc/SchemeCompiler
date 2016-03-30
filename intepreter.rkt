@@ -9,34 +9,70 @@
 
 (define interpret_new
   (λ (filename)
-    (interpret_ast_new (env_push '()) (parser filename)
-                   (λ (v) v) ;(error "No return statement encountered"))
-                   (λ (v) v)
-                   (λ (v) (error "Continue encountered outside of loop"))
-                   (λ (v) (error "Break encountered outside of loop"))
-                   (λ (s v) (error "Uncaught throw")))))
+    ((lambda (return_cont continue_cont break_cont throw_cont)
+       (interpret_ast_new (env_push '()) (parser filename)
+                          interpret_toplevel_statement
+                          (λ (env) (return_cont (call_function
+                                                 env
+                                                 'main
+                                                 '()
+                                                 (λ (v) (error "No return encountered in main"))
+                                                 return_cont
+                                                 continue_cont
+                                                 break_cont
+                                                 throw_cont)))
+                          return_cont     ; TODO: this shouldn't be possible.
+                          continue_cont   ; TODO: this shouldn't be possible.
+                          break_cont      ; TODO: this shouldn't be possible.
+                          throw_cont))
+     (λ (v) v)
+     (λ (v) (error "Continue encountered outside of loop"))
+     (λ (v) (error "Break encountered outside of loop"))
+     (λ (s v) (error "Uncaught throw")))))
+                         
 
 (define interpret_ast_new
-  (λ (env ast env_cont return_cont continue_cont break_cont throw_cont)
+  (λ (env ast stmt_interpreter env_cont return_cont continue_cont break_cont throw_cont)
     (if (null? ast)
         (env_cont env)
-        (interpret_toplevel_statement env (current_statement ast)
-                             (λ (v) (interpret_ast_new v (remaining_statements ast) env_cont return_cont continue_cont break_cont throw_cont))
-                             return_cont
-                             continue_cont
-                             break_cont
-                             throw_cont))))
+        (stmt_interpreter env
+                          (current_statement ast)
+                          (λ (v) (interpret_ast_new v (remaining_statements ast) stmt_interpreter env_cont return_cont continue_cont break_cont throw_cont))
+                          return_cont
+                          continue_cont
+                          break_cont
+                          throw_cont))))
 
 (define interpret_toplevel_statement
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
     (cond
-      ((eq? 'var (operator statement)) (env_cont (interpret_var env statement env_cont return_cont continue_cont break_cont throw_cont)))
-      ((eq? 'function (operator statement)) (env_cont (interpret_function env statement env_cont return_cont continue_cont break_cont throw_cont)))
-      (else "invalid statement"))))
+      ((eq? 'var (operator statement)) (interpret_var env statement env_cont return_cont continue_cont break_cont throw_cont))
+      ((eq? 'function (operator statement)) (interpret_function env statement env_cont return_cont continue_cont break_cont throw_cont))
+      (else (error "invalid top level statement" (operator statement))))))
+
+(define interpret_body_statement
+  (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
+    (cond
+      ((eq? 'var (operator statement)) (interpret_var env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test.
+      ((eq? 'function (operator statement)) (interpret_function env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test
+      ((eq? 'return (operator statement)) (return_cont (value env (operand_1 statement))))
+      (else (error "invalid body statement" (operator statement))))))
 
 (define interpret_function
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
-    (env_current_func_add env (cdr statement))))
+    (env_cont (env_current_func_add env (cdr statement)))))
+
+(define call_function
+  (λ (env name args env_cont return_cont continue_cont break_cont throw_cont)
+    (interpret_ast_new env
+                       (caddr (env_current_func_lookup env name))
+                       interpret_body_statement
+                       env_cont
+                       return_cont
+                       continue_cont
+                       break_cont
+                       throw_cont)))
+               
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; OLD INTERPRETER ;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -224,12 +260,14 @@
 
 (define interpret_var
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
-    (env_current_value_update env (operand_1 statement) 0
-                  (λ (v) (error "variable already declared:" (operand_1 statement)))
-                  (λ (v) (env_current_value_add env  (operand_1 statement)
-                                    (if (has_operand_2 statement)
-                                        (value (env_current_state env) (operand_2 statement))
-                                        null))))))
+    (env_cont
+     (env_current_value_update env
+                               (operand_1 statement) 0
+                               (λ (v) (error "variable already declared:" (operand_1 statement)))
+                               (λ (v) (env_current_value_add env  (operand_1 statement)
+                                                             (if (has_operand_2 statement)
+                                                                 (value (env_current_state env) (operand_2 statement))
+                                                                 null)))))))
 
 ; Interprets a var assign statement from the AST and returns the updated state.
 ; Throws an error if: variable has not yet been declared.
@@ -317,24 +355,24 @@
 
 ; Evaluates the value of an expression, including constants,
 ; arithmetic operations, boolean operations, and variable references.
-; s: current state list.
+; env: current environment stack (list).
 ; expression: the expression AST.
 ; Throws error if: variable is used before it is declared or an unknown
 ; operation is attempted.
 ; Returns: the value of the expression.
 (define value
-  (λ (s expression)
+  (λ (env expression)
     (cond
       ((number? expression) expression)
       ((eq? 'true expression) #t)
       ((eq? 'false expression) #f)
-      ((not (list? expression)) (state_value s expression))
+      ((not (list? expression)) (env_current_value env expression))
       ((not (has_operand_2 expression))((operation_function (operator expression))
              0
-             (value s (operand_1 expression))))
+             (value env (operand_1 expression))))
       (else ((operation_function (operator expression))
-             (value s (operand_1 expression))
-             (value s (operand_2 expression)))))))
+             (value env (operand_1 expression))
+             (value env (operand_2 expression)))))))
 
 ; Wraps the value function such as to return non-lisp versions
 ; of boolean values.
@@ -588,6 +626,19 @@
                                    (env_current_funcs env)))
                         (env_current_state env))))
 
+; Finds a function in the functions list.
+(define func_lookup
+  (λ (funcs name)
+    (cond
+      ((null? funcs) (error "Unknown function name" name))
+      ((eq? name (caar funcs)) (car funcs))
+      (else (func_lookup (cdr funcs) name)))))
+
+; Finds a function in the functions list.
+(define env_current_func_lookup
+  (λ (env name)
+    (func_lookup (env_current_funcs env) name)))
+    
 ; Iterates through the levels of the scope, starting from current, heading out
 ; until it locates the existing mapping for the variable and replaces it.
 ; state: the state.
