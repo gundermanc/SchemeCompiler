@@ -63,6 +63,7 @@
       ((eq? 'funcall (operator statement)) (call_function env (operand_1 statement) '() env_cont (λ (value env) (env_cont value))) continue_cont break_cont throw_cont)
       ((eq? '= (operator statement)) (env_cont (interpret_assign env statement env_cont return_cont continue_cont break_cont throw_cont)))
       ((eq? 'while (operator statement)) (interpret_while env statement env_cont return_cont continue_cont break_cont throw_cont))
+      ((eq? 'if (operator statement)) (interpret_if env statement env_cont return_cont continue_cont break_cont throw_cont))
       (else (error "invalid body statement" (operator statement))))))
 
 (define interpret_function
@@ -332,27 +333,17 @@
            break_cont
            throw_cont)))
 
-; Interprets an if statement.
-; Throws an error if: no return statement in control flow path or
-; variables are used before being declared, variables are declared
-; multiple times, break or continue statement is encountered outside
-; of loop, or a throw statement is outside of a try/catch block.
-;
-;
-; state: the current program state.
-; statement: a properly formed abstract syntax tree if statement.
-; state_cont: State continuation function.
-; continue_cont: continue continuation function.
-; return_cont: return continuation function.
-; break_cont: break continuation function.
-; throw_cont: throw_continuation function.
 (define interpret_if
-  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont)
-    (if (value state (condition statement))
-        (interpret_statement state (true_statement statement) state_cont return_cont continue_cont break_cont throw_cont)
-        (if (has_false_statement statement)
-            (interpret_statement state (false_statement statement) state_cont return_cont continue_cont break_cont throw_cont)
-            (state_cont state)))))
+  (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
+    (value env
+           (condition statement)
+           env_cont
+           (λ (value env) (if value
+                              (interpret_body_statement env (true_statement statement) env_cont return_cont continue_cont break_cont throw_cont)
+                              (interpret_body_statement env (false_statement statement) env_cont return_cont continue_cont break_cont throw_cont)))
+           continue_cont
+           break_cont
+           throw_cont)))
 
 ; Looks up an arithmetic or boolean function by its symbol.
 ; operator: an arithmetic or boolean operator.
