@@ -55,7 +55,11 @@
     (cond
       ((eq? 'var (operator statement)) (interpret_var env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test.
       ((eq? 'function (operator statement)) (interpret_function env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test
-      ((eq? 'return (operator statement)) (value env (operand_1 statement) (λ (value env) (return_cont (build_tuple env value)))))
+      ((eq? 'return (operator statement)) (value env
+                                                 (operand_1 statement)
+                                                 env_cont
+                                                 (λ (value env) (return_cont (build_tuple env value)))
+                                                 continue_cont break_cont throw_cont))
       ((eq? 'funcall (operator statement)) (call_function env (operand_1 statement) '() env_cont (λ (v) (env_cont (tuple_env v))) continue_cont break_cont throw_cont))
       (else (error "invalid body statement" (operator statement))))))
 
@@ -267,7 +271,12 @@
                               (λ (v) (if (has_operand_2 statement)
                                          (value env
                                                 (operand_2 statement)
-                                                (λ (value env) (env_cont (env_current_value_add env (operand_1 statement) value))))
+                                                env_cont
+                                                (λ (value env) (env_cont (env_current_value_add env (operand_1 statement) value)))
+                                                continue_cont
+                                                break_cont
+                                                throw_cont)
+                                         
                                          (env_cont null))))))
 
 ; Interprets a var assign statement from the AST and returns the updated state.
@@ -362,21 +371,42 @@
 ; operation is attempted.
 ; Returns: the value of the expression.
 (define value
-  (λ (env expression result_cont)
+  (λ (env expression env_cont result_cont continue_cont break_cont throw_cont)
     (cond
       ((number? expression) (result_cont expression env))
       ((eq? 'true expression) (result_cont #t env))
       ((eq? 'false expression) (result_cont #f env))
-      ((eq? 'funcall expression) ((λ (tuple)
-                                    (result_cont (tuple_value tuple) (tuple_env tuple)))
-                                  (call_function env (operand_1 statement) '() env_cont (λ (v) (env_cont (tuple_env v))))))
       ((not (list? expression)) (result_cont (env_current_value env expression) env))
-      ((not (has_operand_2 expression)) (result_cont ((operation_function (operator expression))
-             0
-             (value env (operand_1 expression)))))
-      (else (result_cont ((operation_function (operator expression))
-             (value env (operand_1 expression))
-             (value env (operand_2 expression))))))))
+      ((eq? 'funcall (operator expression)) (call_function env
+                                                           (operand_1 expression)
+                                                           '()
+                                                           (λ (v) (error "Function" (operator expression) "did not return"))
+                                                           (λ (v) (result_cont (tuple_value v) (tuple_env v)))
+                                                           continue_cont
+                                                           break_cont
+                                                           throw_cont))
+      ((not (has_operand_2 expression)) (value env
+                                               (operand_1 expression)
+                                               (λ (value env)
+                                                 (result_cont ((operation_function (operator expression))
+                                                  0
+                                                  value)))))
+      (else (value env
+                   (operand_1 expression)
+                   env_cont
+                   (λ (value_1 env)
+                     (value env
+                            (operand_2 expression)
+                            env_cont
+                            (λ (value_2 env) (result_cont ((operation_function (operator expression))
+                                                           value_1
+                                                           value_2) env))
+                            continue_cont
+                            break_cont
+                            throw_cont))
+                   continue_cont
+                   break_cont
+                   throw_cont)))))
 
 ; Wraps the value function such as to return non-lisp versions
 ; of boolean values.
