@@ -58,7 +58,7 @@
       ((eq? 'return (operator statement)) (value env
                                                  (operand_1 statement)
                                                  env_cont return_cont continue_cont break_cont throw_cont))
-      ((eq? 'funcall (operator statement)) (call_function env (operand_1 statement) '() env_cont (λ (value env) (env_cont value))) continue_cont break_cont throw_cont)
+      ((eq? 'funcall (operator statement)) (call_function env (operand_1 statement) '() env_cont (λ (value env) (env_cont env)) continue_cont break_cont throw_cont))
       ((eq? '= (operator statement)) (interpret_assign env statement env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'while (operator statement)) (interpret_while env statement env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'if (operator statement)) (interpret_if env statement env_cont return_cont continue_cont break_cont throw_cont))
@@ -77,14 +77,14 @@
 
 (define call_function
   (λ (env name args env_cont return_cont continue_cont break_cont throw_cont)
-    (interpret_ast_new env
+    (interpret_ast_new (env_push_copy env)
                        (caddr (env_current_func_lookup env name))
                        interpret_body_statement
-                       env_cont
-                       return_cont
+                       (λ (env) (env_cont (env_pop env)))
+                       (λ (value env) (return_cont value (env_pop env)))
                        continue_cont
                        break_cont
-                       throw_cont)))
+                       (λ (value env) (throw_cont value (env_pop env))))))
                
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; OLD INTERPRETER ;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -426,6 +426,14 @@
 (define env_push
   (λ (env)
      (cons (env_build '() '(())) env)))
+
+; Pushes a new environment that is a copy of the old environment except for the
+; state.
+; env: Stack of envs.
+; Throws: No error checking. Be very careful that inputs are the correct form.
+(define env_push_copy
+  (λ (env)
+     (cons (env_build (env_current_funcs env) '(())) env)))
 
 ; Updates the current environment with new functions and/or state.
 ; Throws: No error checking. Be very careful that inputs are the correct form.
