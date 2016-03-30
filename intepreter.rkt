@@ -58,7 +58,7 @@
       ((eq? 'return (operator statement)) (value env
                                                  (operand_1 statement)
                                                  env_cont return_cont continue_cont break_cont throw_cont))
-      ((eq? 'funcall (operator statement)) (call_function env (operand_1 statement) '() env_cont (λ (value env) (env_cont env)) continue_cont break_cont throw_cont))
+      ((eq? 'funcall (operator statement)) (call_function env (operand_1 statement) (cddr statement) env_cont (λ (value env) (env_cont env)) continue_cont break_cont throw_cont))
       ((eq? '= (operator statement)) (interpret_assign env statement env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'while (operator statement)) (interpret_while env statement env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'if (operator statement)) (interpret_if env statement env_cont return_cont continue_cont break_cont throw_cont))
@@ -77,14 +77,31 @@
 
 (define call_function
   (λ (env name args env_cont return_cont continue_cont break_cont throw_cont)
-    (interpret_ast_new (env_push_copy env)
-                       (caddr (env_current_func_lookup env name))
-                       interpret_body_statement
-                       (λ (env) (env_cont (env_pop env)))
-                       (λ (value env) (return_cont value (env_pop env)))
-                       continue_cont
-                       break_cont
-                       (λ (value env) (throw_cont value (env_pop env))))))
+    ((λ (func)
+       (interpret_ast_new (bind_params (env_push_copy env) (caddr func) (cadr func) args)
+                                       (caddr func)
+                                       interpret_body_statement
+                                       (λ (env) (env_cont (env_pop env)))
+                                       (λ (value env) (return_cont value (env_pop env)))
+                                       continue_cont
+                                       break_cont
+                                       (λ (value env) (throw_cont value (env_pop env)))))
+     (env_current_func_lookup env name))))
+
+(define bind_params
+  (λ (env name formal_args args)
+    (if (not (eq? (length formal_args) (length args)))
+        (error "Invalid number of parameters to function")
+        (bind_params* env formal_args args))))
+
+(define bind_params*
+  (λ (env formal_args args)
+    (if (or (null? formal_args) (null? args))
+        env
+        (env_current_value_update env
+                                  (car formal_args) 0
+                                  (λ (v) (error "variable or parameter already declared:" (operand_1 statement)))
+                                  (λ (v) (bind_params* (env_current_value_add env (car formal_args) (car args)) (cdr formal_args) (cdr args)))))))
                
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; OLD INTERPRETER ;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -286,7 +303,7 @@
       ((not (list? expression)) (result_cont (env_current_value env expression) env))
       ((eq? 'funcall (operator expression)) (call_function env
                                                            (operand_1 expression)
-                                                           '()
+                                                           (cddr expression)
                                                            (λ (v) (error "Function" (operator expression) "did not return"))
                                                            result_cont
                                                            continue_cont
@@ -380,29 +397,6 @@
 (define has_operand_2
   (λ (expression)
     (not (null? (cddr expression)))))
-
-
-;;;;;;;;;;;;;;; TBD DELETE THIS STUFF ;;;;;;;;;;;;;;;;;;;;;;
-
-
-; Pushes a new scoping level onto the state.
-; s: the state to modify.
-; Returns: the updated state.
-(define state_push_scope
-  (λ (s)
-    (cons '() s)))
-
-; Pops a scoping level from the state.
-; s: the state to modify.
-; Returns: the updated state.
-(define state_pop_scope cdr)
-
-
-
-
-
-
-
 
 
 ;;;;;;;;;;;;;;; FINALIZED UPDATED FROM HERE ON ;;;;;;;;;;;;;;;;;;;;;;
