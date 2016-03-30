@@ -64,6 +64,7 @@
       ((eq? '= (operator statement)) (env_cont (interpret_assign env statement env_cont return_cont continue_cont break_cont throw_cont)))
       ((eq? 'while (operator statement)) (interpret_while env statement env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'if (operator statement)) (interpret_if env statement env_cont return_cont continue_cont break_cont throw_cont))
+      ((eq? 'begin (operator statement)) (interpret_block env statement env_cont return_cont continue_cont break_cont throw_cont))
       (else (error "invalid body statement" (operator statement))))))
 
 (define interpret_function
@@ -243,28 +244,15 @@
         (state_cont state)
         (interpret_ast state (finally_block statement) state_cont return_cont continue_cont break_cont throw_cont))))
 
-; Interprets a block statement.
-; Throws an error if: no return statement in control flow path or
-; variables are used before being declared, variables are declared
-; multiple times, break or continue statement is encountered outside
-; of loop, or a throw statement is outside of a try/catch block.
-;
-;
-; state: the current program state.
-; statement: a properly formed abstract syntax tree block statement.
-; state_cont: State continuation function.
-; continue_cont: continue continuation function.
-; return_cont: return continuation function.
-; break_cont: break continuation function.
-; throw_cont: throw_continuation function.
 (define interpret_block
-  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont)
-    (interpret_ast (state_push_scope state) (cdr statement)
-                   (λ (v) (state_cont (state_pop_scope v)))
-                   return_cont
-                   (λ (v) (continue_cont (state_pop_scope v)))
-                   (λ (v) (break_cont (state_pop_scope v)))
-                   (λ (s v) (throw_cont (state_pop_scope s) v)))))
+  (λ (state statement env_cont return_cont continue_cont break_cont throw_cont)
+    (interpret_ast_new (state_push_scope state) (cdr statement)
+                       interpret_body_statement
+                       (λ (v) (state_cont (state_pop_scope v)))
+                       return_cont
+                       (λ (v) (continue_cont (state_pop_scope v)))
+                       (λ (v) (break_cont (state_pop_scope v)))
+                       (λ (s v) (throw_cont (state_pop_scope s) v)))))
 
 (define interpret_var
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
