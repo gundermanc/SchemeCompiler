@@ -10,7 +10,7 @@
 (define interpret_new
   (λ (filename)
     (interpret_ast_new (env_push '()) (parser filename)
-                   (λ (v) (error "No return statement encountered"))
+                   (λ (v) v) ;(error "No return statement encountered"))
                    (λ (v) v)
                    (λ (v) (error "Continue encountered outside of loop"))
                    (λ (v) (error "Break encountered outside of loop"))
@@ -31,7 +31,12 @@
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
     (cond
       ((eq? 'var (operator statement)) (env_cont (interpret_var env statement env_cont return_cont continue_cont break_cont throw_cont)))
+      ((eq? 'function (operator statement)) (env_cont (interpret_function env statement env_cont return_cont continue_cont break_cont throw_cont)))
       (else "invalid statement"))))
+
+(define interpret_function
+  (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
+    (env_current_func_add env (cdr statement))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; OLD INTERPRETER ;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -569,6 +574,19 @@
       (else (state_level_replace (cdr state) name value
                                  (λ (s) (replaced_cont (cons (car state) s)))
                                  (λ (s) (notreplaced_cont (cons (car state) s))))))))
+
+; Adds a function to the functions list. Although this uses state_level_replace it
+; has nothing to do with the state.
+(define env_current_func_add
+  (λ (env func)
+    (env_current_update env
+                        (cons func
+                              (map (λ (v)
+                                     (if (eq? (car v) (car func))
+                                         (error "Duplicate function" (car func))
+                                         v))
+                                   (env_current_funcs env)))
+                        (env_current_state env))))
 
 ; Iterates through the levels of the scope, starting from current, heading out
 ; until it locates the existing mapping for the variable and replaces it.
