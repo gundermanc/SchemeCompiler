@@ -57,6 +57,7 @@
       ((eq? 'function (operator statement)) (interpret_function env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test
       ((eq? 'return (operator statement)) (return_cont (build_return env (value env (operand_1 statement)))))
       ((eq? '= (operator statement)) (env_cont (interpret_assign env statement)))
+      ((eq? 'while (operator statement)) (interpret_while env statement env_cont return_cont continue_cont break_cont throw_cont))
       (else (error "invalid body statement" (operator statement))))))
 
 (define interpret_function
@@ -295,14 +296,14 @@
 ; break_cont: break continuation function.
 ; throw_cont: throw_continuation function.
 (define interpret_while
-  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont)
+  (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
     (cond
-      ((not (value state (condition statement))) (state_cont state))
-      (else (interpret_statement state (true_statement statement) 
-                                 (λ (v) (interpret_while v statement state_cont return_cont continue_cont break_cont throw_cont))
+      ((not (value env (condition statement))) (env_cont env))
+      (else (interpret_body_statement env (true_statement statement)
+                                 (λ (v) (interpret_while v statement env_cont return_cont continue_cont break_cont throw_cont))
                                  return_cont
-                                 (λ (v) (interpret_while v statement state_cont return_cont continue_cont break_cont throw_cont))
-                                 (λ (v) (state_cont v))
+                                 (λ (v) (interpret_while v statement env_cont return_cont continue_cont break_cont throw_cont))
+                                 (λ (v) (env_cont v))
                                  throw_cont)))))
 
 ; Interprets an if statement.
