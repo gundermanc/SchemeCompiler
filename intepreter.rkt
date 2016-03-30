@@ -66,6 +66,7 @@
       ((eq? 'if (operator statement)) (interpret_if env statement env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'begin (operator statement)) (interpret_block env statement env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'continue (operator statement)) (continue_cont env))
+      ((eq? 'break (operator statement)) (break_cont env))
       (else (error "invalid body statement" (operator statement))))))
 
 (define interpret_function
