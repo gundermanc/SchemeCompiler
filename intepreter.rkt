@@ -56,6 +56,7 @@
       ((eq? 'var (operator statement)) (interpret_var env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test.
       ((eq? 'function (operator statement)) (interpret_function env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test
       ((eq? 'return (operator statement)) (return_cont (build_return env (value env (operand_1 statement)))))
+      ((eq? '= (operator statement)) (env_cont (interpret_assign env statement)))
       (else (error "invalid body statement" (operator statement))))))
 
 (define interpret_function
@@ -275,8 +276,8 @@
 ; state: a list containing the current state.
 ; statement: a single parsed assign statement.
 (define interpret_assign
-  (λ (state statement)
-    (state_update state (operand_1 statement) (value state (operand_2 statement))
+  (λ (env statement)
+    (env_current_value_update env (operand_1 statement) (value env (operand_2 statement))
                   (λ (v) v)
                   (λ (v) (error "undeclared variable in assignment")))))
 
@@ -675,4 +676,6 @@
 ; notupdated_cont: the continuation for if the value was not replaced.
 (define env_current_value_update
   (λ (env name value updated_cont notupdated_cont)
-    (state_update (env_current_state env) name value updated_cont notupdated_cont)))
+    (state_update (env_current_state env) name value 
+                  (λ (v) (env_current_update env (env_current_funcs env) v))
+                  notupdated_cont)))
