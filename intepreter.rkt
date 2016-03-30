@@ -61,10 +61,11 @@
                                                  return_cont
                                                  continue_cont break_cont throw_cont))
       ((eq? 'funcall (operator statement)) (call_function env (operand_1 statement) '() env_cont (λ (value env) (env_cont value))) continue_cont break_cont throw_cont)
-      ((eq? '= (operator statement)) (env_cont (interpret_assign env statement env_cont return_cont continue_cont break_cont throw_cont)))
+      ((eq? '= (operator statement)) (interpret_assign env statement env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'while (operator statement)) (interpret_while env statement env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'if (operator statement)) (interpret_if env statement env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'begin (operator statement)) (interpret_block env statement env_cont return_cont continue_cont break_cont throw_cont))
+      ((eq? 'continue (operator statement)) (continue_cont env))
       (else (error "invalid body statement" (operator statement))))))
 
 (define interpret_function
