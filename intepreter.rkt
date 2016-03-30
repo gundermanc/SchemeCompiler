@@ -28,7 +28,7 @@
      (λ (value env) value)
      (λ (v) (error "Continue encountered outside of loop"))
      (λ (v) (error "Break encountered outside of loop"))
-     (λ (s v) (error "Uncaught throw")))))
+     (λ (e v) (error "Uncaught throw")))))
                          
 
 (define interpret_ast_new
@@ -57,9 +57,7 @@
       ((eq? 'function (operator statement)) (interpret_function env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test
       ((eq? 'return (operator statement)) (value env
                                                  (operand_1 statement)
-                                                 env_cont
-                                                 return_cont
-                                                 continue_cont break_cont throw_cont))
+                                                 env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'funcall (operator statement)) (call_function env (operand_1 statement) '() env_cont (λ (value env) (env_cont value))) continue_cont break_cont throw_cont)
       ((eq? '= (operator statement)) (interpret_assign env statement env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'while (operator statement)) (interpret_while env statement env_cont return_cont continue_cont break_cont throw_cont))
@@ -67,6 +65,10 @@
       ((eq? 'begin (operator statement)) (interpret_block env statement env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'continue (operator statement)) (continue_cont env))
       ((eq? 'break (operator statement)) (break_cont env))
+      ((eq? 'try (operator statement)) (interpret_try env statement env_cont return_cont continue_cont break_cont throw_cont))
+      ((eq? 'throw (operator statement)) (value env
+                                                (operand_1 statement)
+                                                env_cont throw_cont continue_cont break_cont throw_cont))
       (else (error "invalid body statement" (operator statement))))))
 
 (define interpret_function
@@ -94,113 +96,29 @@
 ; Public "API"
 ; ==========================================================
 
-; Interprets a file and returns a single value containing result
-; of the program execution (whatever was returned using the return
-; statement that was executed.
-; Throws an error if: no return statement in control flow path or
-; variables are used before being declared, variables are declared
-; multiple times, break or continue statement is encountered outside
-; of loop, or a throw statement is outside of a try/catch block. 
-;
-; filename: the name of the input file.
-(define interpret
-  (λ (filename)
-    (interpret_ast (state_push_scope '()) (parser filename)
-                   (λ (v) (error "No return statement encountered"))
-                   (λ (v) v)
-                   (λ (v) (error "Continue encountered outside of loop"))
-                   (λ (v) (error "Break encountered outside of loop"))
-                   (λ (s v) (error "Uncaught throw")))))
-
 ; "Private" Impl:
 ; ==========================================================
 
-; Interprets an AST.
-;
-; Throws an error if: no return statement in control flow path or
-; variables are used before being declared, variables are declared
-; multiple times, break or continue statement is encountered outside
-; of loop, or a throw statement is outside of a try/catch block.
-;
-; state: the current program state.
-; ast: a properly formed abstract syntax tree of the format output
-;      by simpleParser.scm
-; state_cont: State continuation function.
-; continue_cont: continue continuation function.
-; return_cont: return continuation function.
-; break_cont: break continuation function.
-; throw_cont: throw_continuation function.
-(define interpret_ast
-  (λ (state ast state_cont return_cont continue_cont break_cont throw_cont)
-    (if (null? ast)
-        (state_cont state)
-        (interpret_statement state (current_statement ast)
-                             (λ (v) (interpret_ast v (remaining_statements ast) state_cont return_cont continue_cont break_cont throw_cont))
-                             return_cont
-                             continue_cont
-                             break_cont
-                             throw_cont))))
 
-; Interprets a single statement from the AST and updates the state.
-; 
-; Throws an error if: no return statement in control flow path or
-; variables are used before being declared, variables are declared
-; multiple times, break or continue statement is encountered outside
-; of loop, or a throw statement is outside of a try/catch block.
-;
-;
-; state: the current program state.
-; statement: a properly formed abstract syntax tree statement.
-; state_cont: State continuation function.
-; continue_cont: continue continuation function.
-; return_cont: return continuation function.
-; break_cont: break continuation function.
-; throw_cont: throw_continuation function.
-(define interpret_statement
-  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont)
-    (cond
-      ((eq? 'var (operator statement)) (state_cont (interpret_var state statement)))
-      ((eq? '= (operator statement)) (state_cont (interpret_assign state statement)))
-      ((eq? 'while (operator statement)) (interpret_while state statement state_cont return_cont continue_cont break_cont throw_cont))
-      ((eq? 'return (operator statement)) (return_cont (pretty_value state (operand_1 statement))))
-      ((eq? 'if (operator statement)) (interpret_if state statement state_cont return_cont continue_cont break_cont throw_cont))
-      ((eq? 'begin (operator statement)) (interpret_block state statement state_cont return_cont continue_cont break_cont throw_cont))
-      ((eq? 'continue (operator statement)) (continue_cont state))
-      ((eq? 'break (operator statement)) (break_cont state))
-      ((eq? 'try (operator statement)) (interpret_try state statement state_cont return_cont continue_cont break_cont throw_cont))
-      ((eq? 'throw (operator statement)) (throw_cont state (value state (operand_1 statement))))
-      (else "invalid statement"))))
-
-; Interprets a try/catch/finally block/statement.
-;
-; Throws an error if: no return statement in control flow path or
-; variables are used before being declared, variables are declared
-; multiple times, break or continue statement is encountered outside
-; of loop, or a throw statement is outside of a try/catch block.
-;
-;
-; state: the current program state.
-; statement: a properly formed abstract syntax tree try/catch/finally statement.
-; state_cont: State continuation function.
-; continue_cont: continue continuation function.
-; return_cont: return continuation function.
-; break_cont: break continuation function.
-; throw_cont: throw_continuation function.
 (define interpret_try
-  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont)
-    (interpret_ast state (cadr statement)
-                   (λ (v) (interpret_finally v statement state_cont return_cont continue_cont break_cont throw_cont))
-                   return_cont
-                   continue_cont
-                   break_cont
-                   (λ (s v) (interpret_catch s statement
-                                             (λ (v) (interpret_finally v statement
-                                                                       state_cont
-                                                                       return_cont
-                                                                       continue_cont
-                                                                       break_cont
-                                                                       throw_cont))
-                                             return_cont continue_cont break_cont throw_cont v)))))
+  (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
+    (interpret_ast_new env
+                       (cadr statement)
+                       interpret_body_statement
+                       (λ (v) (interpret_finally v statement env_cont return_cont continue_cont break_cont throw_cont))
+                       return_cont
+                       continue_cont
+                       break_cont
+                       (λ (value env)
+                         (interpret_catch env
+                                          statement
+                                          (λ (env) (interpret_finally env statement
+                                                                      env_cont
+                                                                      return_cont
+                                                                      continue_cont
+                                                                      break_cont
+                                                                      throw_cont))
+                                          return_cont continue_cont break_cont throw_cont value)))))
 
 ; Interprets a catch block/statement.
 ; Throws an error if: no return statement in control flow path or
@@ -217,34 +135,24 @@
 ; break_cont: break continuation function.
 ; throw_cont: throw_continuation function.
 (define interpret_catch
-  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont value)
-    (interpret_ast (state_add (state_push_scope state) (catch_var statement) value)
+  (λ (env statement env_cont return_cont continue_cont break_cont throw_cont value)
+    (interpret_ast_new (env_current_value_add (env_scope_push env) (catch_var statement) value)
                    (try_block statement)
-                   (λ (v) (state_cont (state_pop_scope v)))
+                   interpret_body_statement
+                   (λ (v) (env_cont (env_scope_pop v)))
                    return_cont
-                   (λ (v) (continue_cont (state_pop_scope v)))
-                   (λ (v) (break_cont (state_pop_scope v)))
-                   (λ (s v) (throw_cont (state_pop_scope s) v)))))
+                   (λ (v) (continue_cont (env_scope_pop v)))
+                   (λ (v) (break_cont (env_scope_pop v)))
+                   (λ (v env) (throw_cont v (env_scope_pop env))))))
 
-; Interprets a finally block/statement.
-; Throws an error if: no return statement in control flow path or
-; variables are used before being declared, variables are declared
-; multiple times, break or continue statement is encountered outside
-; of loop, or a throw statement is outside of a try/catch block.
-;
-;
-; state: the current program state.
-; statement: a properly formed abstract syntax tree try/catch/finally statement.
-; state_cont: State continuation function.
-; continue_cont: continue continuation function.
-; return_cont: return continuation function.
-; break_cont: break continuation function.
-; throw_cont: throw_continuation function.
 (define interpret_finally
-  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont)
+  (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
     (if (null? (finally_stmt statement))
-        (state_cont state)
-        (interpret_ast state (finally_block statement) state_cont return_cont continue_cont break_cont throw_cont))))
+        (env_cont env)
+        (interpret_ast_new env
+                           (finally_block statement)
+                           interpret_body_statement
+                           env_cont return_cont continue_cont break_cont throw_cont))))
 
 (define interpret_block
   (λ (state statement env_cont return_cont continue_cont break_cont throw_cont)
@@ -388,8 +296,8 @@
                                                (operand_1 expression)
                                                (λ (value env)
                                                  (result_cont ((operation_function (operator expression))
-                                                  0
-                                                  value)))))
+                                                               0
+                                                               value)))))
       (else (value env
                    (operand_1 expression)
                    env_cont
