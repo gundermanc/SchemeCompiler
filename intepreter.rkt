@@ -12,20 +12,20 @@
     ((lambda (return_cont continue_cont break_cont throw_cont)
        (interpret_ast_new (env_push '()) (parser filename)
                           interpret_toplevel_statement
-                          (λ (env) (return_cont (call_function
-                                                 env
-                                                 'main
-                                                 '()
-                                                 (λ (v) (error "No return encountered in main"))
-                                                 return_cont
-                                                 continue_cont
-                                                 break_cont
-                                                 throw_cont)))
+                          (λ (env) (call_function
+                                        env
+                                        'main
+                                        '()
+                                        (λ (v) (error "No return encountered in main"))
+                                        return_cont
+                                        continue_cont
+                                        break_cont
+                                        throw_cont))
                           return_cont     ; TODO: this shouldn't be possible.
                           continue_cont   ; TODO: this shouldn't be possible.
                           break_cont      ; TODO: this shouldn't be possible.
                           throw_cont))
-     (λ (v) v)
+     (λ (v) (return_value v))
      (λ (v) (error "Continue encountered outside of loop"))
      (λ (v) (error "Break encountered outside of loop"))
      (λ (s v) (error "Uncaught throw")))))
@@ -55,7 +55,7 @@
     (cond
       ((eq? 'var (operator statement)) (interpret_var env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test.
       ((eq? 'function (operator statement)) (interpret_function env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test
-      ((eq? 'return (operator statement)) (return_cont (value env (operand_1 statement))))
+      ((eq? 'return (operator statement)) (return_cont (build_return env (value env (operand_1 statement)))))
       (else (error "invalid body statement" (operator statement))))))
 
 (define interpret_function
@@ -387,6 +387,13 @@
 
 ; Helper functions:
 ; ==========================================================
+
+(define build_return
+  (λ (env value)
+    (cons env (cons value '()))))
+
+(define return_env car)
+(define return_value cadr)
 
 ; Gets the finally portion of the try/catch block/statement.
 (define finally_stmt cadddr)
