@@ -102,15 +102,15 @@
 
 (define interpret_try
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
-    (interpret_ast_new env
+    (interpret_ast_new (env_scope_push env)
                        (cadr statement)
                        interpret_body_statement
-                       (λ (v) (interpret_finally v statement env_cont return_cont continue_cont break_cont throw_cont))
-                       return_cont
-                       continue_cont
-                       break_cont
+                       (λ (v) (interpret_finally (env_scope_pop v) statement env_cont return_cont continue_cont break_cont throw_cont))
+                       (λ (value env) (return_cont value (env_scope_push env)))
+                       (λ (v) (continue_cont (env_scope_pop v)))
+                       (λ (v) (break_cont (env_scope_pop v)))
                        (λ (value env)
-                         (interpret_catch env
+                         (interpret_catch (env_scope_pop env)
                                           statement
                                           (λ (env) (interpret_finally env statement
                                                                       env_cont
@@ -155,14 +155,14 @@
                            env_cont return_cont continue_cont break_cont throw_cont))))
 
 (define interpret_block
-  (λ (state statement env_cont return_cont continue_cont break_cont throw_cont)
-    (interpret_ast_new (state_push_scope state) (cdr statement)
+  (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
+    (interpret_ast_new (env_scope_push env) (remaining_statements statement)
                        interpret_body_statement
-                       (λ (v) (state_cont (state_pop_scope v)))
+                       (λ (v) (env_cont (env_scope_pop v)))
                        return_cont
-                       (λ (v) (continue_cont (state_pop_scope v)))
-                       (λ (v) (break_cont (state_pop_scope v)))
-                       (λ (s v) (throw_cont (state_pop_scope s) v)))))
+                       (λ (v) (continue_cont (env_scope_pop v)))
+                       (λ (v) (break_cont (env_scope_pop v)))
+                       (λ (s v) (throw_cont (env_scope_pop s) v)))))
 
 (define interpret_var
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
@@ -194,7 +194,7 @@
              (env_current_value_update env
                                        (operand_1 statement)
                                        value
-                                       (λ (env) (return_cont value env))
+                                       (λ (env) (env_cont env))
                                        (λ (v) (error "undeclared variable in assignment"))))
            continue_cont
            break_cont
@@ -610,5 +610,5 @@
 (define env_current_value_update
   (λ (env name value updated_cont notupdated_cont)
     (state_update (env_current_state env) name value 
-                  (λ (v) (env_current_update env (env_current_funcs env) v))
+                  (λ (v) (updated_cont (env_current_update env (env_current_funcs env) v)))
                   notupdated_cont)))
