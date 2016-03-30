@@ -25,7 +25,7 @@
                           continue_cont   ; TODO: this shouldn't be possible.
                           break_cont      ; TODO: this shouldn't be possible.
                           throw_cont))
-     (λ (v) (tuple_value v))
+     (λ (value env) value)
      (λ (v) (error "Continue encountered outside of loop"))
      (λ (v) (error "Break encountered outside of loop"))
      (λ (s v) (error "Uncaught throw")))))
@@ -58,9 +58,11 @@
       ((eq? 'return (operator statement)) (value env
                                                  (operand_1 statement)
                                                  env_cont
-                                                 (λ (value env) (return_cont (build_tuple env value)))
+                                                 return_cont
                                                  continue_cont break_cont throw_cont))
-      ((eq? 'funcall (operator statement)) (call_function env (operand_1 statement) '() env_cont (λ (v) (env_cont (tuple_env v))) continue_cont break_cont throw_cont))
+      ((eq? 'funcall (operator statement)) (call_function env (operand_1 statement) '() env_cont (λ (value env) (env_cont value))) continue_cont break_cont throw_cont)
+      ((eq? '= (operator statement)) (env_cont (interpret_assign env statement env_cont return_cont continue_cont break_cont throw_cont)))
+      ((eq? 'while (operator statement)) (interpret_while env statement env_cont return_cont continue_cont break_cont throw_cont))
       (else (error "invalid body statement" (operator statement))))))
 
 (define interpret_function
@@ -285,10 +287,20 @@
 ; state: a list containing the current state.
 ; statement: a single parsed assign statement.
 (define interpret_assign
-  (λ (state statement)
-    (state_update state (operand_1 statement) (value state (operand_2 statement))
-                  (λ (v) v)
-                  (λ (v) (error "undeclared variable in assignment")))))
+  (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
+    (value env
+           (operand_2 statement)
+           env_cont
+           (λ (value env)
+             (env_current_value_update env
+                                       (operand_1 statement)
+                                       value
+                                       (λ (env) (return_cont value env))
+                                       (λ (v) (error "undeclared variable in assignment"))))
+           continue_cont
+           break_cont
+           throw_cont)))
+  
 
 ; Interprets a while loop.
 ; Throws an error if: no return statement in control flow path or
@@ -304,15 +316,21 @@
 ; break_cont: break continuation function.
 ; throw_cont: throw_continuation function.
 (define interpret_while
-  (λ (state statement state_cont return_cont continue_cont break_cont throw_cont)
-    (cond
-      ((not (value state (condition statement))) (state_cont state))
-      (else (interpret_statement state (true_statement statement) 
-                                 (λ (v) (interpret_while v statement state_cont return_cont continue_cont break_cont throw_cont))
-                                 return_cont
-                                 (λ (v) (interpret_while v statement state_cont return_cont continue_cont break_cont throw_cont))
-                                 (λ (v) (state_cont v))
-                                 throw_cont)))))
+  (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
+    (value env
+           (condition statement)
+           env_cont
+           (λ (value env) (if value
+                              (interpret_body_statement env (true_statement statement)
+                                                        (λ (v) (interpret_while v statement env_cont return_cont continue_cont break_cont throw_cont))
+                                                        return_cont
+                                                        (λ (v) (interpret_while v statement env_cont return_cont continue_cont break_cont throw_cont))
+                                                        (λ (v) (env_cont v))
+                                                        throw_cont)
+                              (env_cont env)))
+           continue_cont
+           break_cont
+           throw_cont)))
 
 ; Interprets an if statement.
 ; Throws an error if: no return statement in control flow path or
@@ -381,7 +399,7 @@
                                                            (operand_1 expression)
                                                            '()
                                                            (λ (v) (error "Function" (operator expression) "did not return"))
-                                                           (λ (v) (result_cont (tuple_value v) (tuple_env v)))
+                                                           result_cont
                                                            continue_cont
                                                            break_cont
                                                            throw_cont))
@@ -421,13 +439,6 @@
 
 ; Helper functions:
 ; ==========================================================
-
-(define build_tuple
-  (λ (env value)
-    (cons env (cons value '()))))
-
-(define tuple_env car)
-(define tuple_value cadr)
 
 ; Gets the finally portion of the try/catch block/statement.
 (define finally_stmt cadddr)
@@ -709,4 +720,6 @@
 ; notupdated_cont: the continuation for if the value was not replaced.
 (define env_current_value_update
   (λ (env name value updated_cont notupdated_cont)
-    (state_update (env_current_state env) name value updated_cont notupdated_cont)))
+    (state_update (env_current_state env) name value 
+                  (λ (v) (env_current_update env (env_current_funcs env) v))
+                  notupdated_cont)))
