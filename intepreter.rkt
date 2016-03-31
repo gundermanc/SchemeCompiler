@@ -77,7 +77,8 @@
 (define call_function
   (λ (env name args env_cont return_cont continue_cont break_cont throw_cont)
     ((λ (func)
-       (interpret_ast (bind_params (env_push_copy env (cadddr func)) (car func) (caddr func) args)
+       (interpret_ast (bind_params (env_scope_push (env_push_copy env (cadddr func))) (car func) (caddr func) args
+                                   env_cont return_cont continue_cont break_cont throw_cont)
                       (cadddr func)
                       interpret_body_statement
                       (λ (env) (env_cont (env_pop env)))
@@ -88,19 +89,19 @@
      (env_current_func_lookup env name))))
 
 (define bind_params
-  (λ (env name formal_args args)
+  (λ (env name formal_args args env_cont return_cont continue_cont break_cont throw_cont)
     (if (not (eq? (length formal_args) (length args)))
         (error "Invalid number of parameters to function")
-        (bind_params* env formal_args args))))
+        (bind_params* env formal_args args env_cont return_cont continue_cont break_cont throw_cont))))
 
 (define bind_params*
-  (λ (env formal_args args)
+  (λ (env formal_args args env_cont return_cont continue_cont break_cont throw_cont)
     (if (or (null? formal_args) (null? args))
         env
-        (env_current_value_update env
-                                  (car formal_args) 0
-                                  (λ (v) (error "variable or parameter already declared:" (car formal_args)))
-                                  (λ (v) (bind_params* (env_current_value_add env (car formal_args) (car args)) (cdr formal_args) (cdr args)))))))
+        (define_var env (car formal_args) (car args)
+          (λ (env) (bind_params* env (car args) (cdr formal_args) (cdr args)
+                                 return_cont continue_cont break_cont throw_cont))
+          return_cont continue_cont break_cont throw_cont))))
                
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; OLD INTERPRETER ;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -168,19 +169,25 @@
 
 (define interpret_var
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
-    (env_current_value_update env
-                              (operand_1 statement) 0
-                              (λ (v) (error "variable already declared:" (operand_1 statement)))
-                              (λ (v) (if (has_operand_2 statement)
-                                         (value env
-                                                (operand_2 statement)
-                                                env_cont
-                                                (λ (value env) (env_cont (env_current_value_add env (operand_1 statement) value)))
-                                                continue_cont
-                                                break_cont
-                                                throw_cont)
-                                         
-                                         (env_cont null))))))
+    (define_var env (operand_1 statement) (if (has_operand_2 statement)
+                                              (operand_2 statement)
+                                              null)
+      env_cont return_cont continue_cont break_cont throw_cont)))
+
+(define define_var
+  (λ (env name val env_cont return_cont continue_cont break_cont throw_cont)
+    (state_level_replace (car (env_current_state env))
+                        name 0
+                        (λ (v) (error "variable already declared:" name))
+                        (λ (v) (if (not (null? val))
+                                   (value env
+                                          val
+                                          env_cont
+                                          (λ (value env) (env_cont (env_current_value_add env name val)))
+                                          continue_cont
+                                          break_cont
+                                          throw_cont)
+                                   (env_cont null))))))
 
 ; Interprets a var assign statement from the AST and returns the updated state.
 ; Throws an error if: variable has not yet been declared.
@@ -298,10 +305,14 @@
                                                            throw_cont))
       ((not (has_operand_2 expression)) (value env
                                                (operand_1 expression)
+                                               env_cont
                                                (λ (value env)
                                                  (result_cont ((operation_function (operator expression))
                                                                0
-                                                               value)))))
+                                                               value) env))
+                                               continue_cont
+                                               break_cont
+                                               throw_cont))
       (else (value env
                    (operand_1 expression)
                    env_cont
