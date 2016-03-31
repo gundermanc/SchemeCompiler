@@ -29,7 +29,6 @@
      (λ (v) (error "Continue encountered outside of loop"))
      (λ (v) (error "Break encountered outside of loop"))
      (λ (e v) (error "Uncaught throw")))))
-                         
 
 (define interpret_ast
   (λ (env ast stmt_interpreter env_cont return_cont continue_cont break_cont throw_cont)
@@ -47,14 +46,14 @@
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
     (cond
       ((eq? 'var (operator statement)) (interpret_var env statement env_cont return_cont continue_cont break_cont throw_cont))
-      ((eq? 'function (operator statement)) (interpret_function env statement env_cont return_cont continue_cont break_cont throw_cont))
+      ((eq? 'function (operator statement)) (interpret_function env statement #t env_cont return_cont continue_cont break_cont throw_cont))
       (else (error "invalid top level statement" (operator statement))))))
 
 (define interpret_body_statement
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
     (cond
-      ((eq? 'var (operator statement)) (interpret_var env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test.
-      ((eq? 'function (operator statement)) (interpret_function env statement env_cont return_cont continue_cont break_cont throw_cont)) ; TODO test
+      ((eq? 'var (operator statement)) (interpret_var env statement env_cont return_cont continue_cont break_cont throw_cont))
+      ((eq? 'function (operator statement)) (interpret_function env statement #f env_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'return (operator statement)) (value env
                                                  (operand_1 statement)
                                                  env_cont return_cont continue_cont break_cont throw_cont))
@@ -72,20 +71,20 @@
       (else (error "invalid body statement" (operator statement))))))
 
 (define interpret_function
-  (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
-    (env_cont (env_current_func_add env (cdr statement)))))
+  (λ (env statement is_top env_cont return_cont continue_cont break_cont throw_cont)
+    (env_cont (env_current_func_add env (cons (cadr statement) (cons is_top (cddr statement)))))))
 
 (define call_function
   (λ (env name args env_cont return_cont continue_cont break_cont throw_cont)
     ((λ (func)
-       (interpret_ast (bind_params (env_push_copy env) (caddr func) (cadr func) args)
-                                       (caddr func)
-                                       interpret_body_statement
-                                       (λ (env) (env_cont (env_pop env)))
-                                       (λ (value env) (return_cont value (env_pop env)))
-                                       continue_cont
-                                       break_cont
-                                       (λ (value env) (throw_cont value (env_pop env)))))
+       (interpret_ast (bind_params (env_push_copy env (cadddr func)) (car func) (caddr func) args)
+                      (cadddr func)
+                      interpret_body_statement
+                      (λ (env) (env_cont (env_pop env)))
+                      (λ (value env) (return_cont value (env_pop env)))
+                      continue_cont
+                      break_cont
+                      (λ (value env) (throw_cont value (env_pop env)))))
      (env_current_func_lookup env name))))
 
 (define bind_params
@@ -100,7 +99,7 @@
         env
         (env_current_value_update env
                                   (car formal_args) 0
-                                  (λ (v) (error "variable or parameter already declared:" (operand_1 statement)))
+                                  (λ (v) (error "variable or parameter already declared:" (car formal_args)))
                                   (λ (v) (bind_params* (env_current_value_add env (car formal_args) (car args)) (cdr formal_args) (cdr args)))))))
                
 
@@ -241,7 +240,9 @@
            env_cont
            (λ (value env) (if value
                               (interpret_body_statement env (true_statement statement) env_cont return_cont continue_cont break_cont throw_cont)
-                              (interpret_body_statement env (false_statement statement) env_cont return_cont continue_cont break_cont throw_cont)))
+                              (if (has_false_statement statement)
+                                  (interpret_body_statement env (false_statement statement) env_cont return_cont continue_cont break_cont throw_cont)
+                                  (env_cont env))))
            continue_cont
            break_cont
            throw_cont)))
@@ -412,8 +413,17 @@
 ; env: Stack of envs.
 ; Throws: No error checking. Be very careful that inputs are the correct form.
 (define env_push_copy
-  (λ (env)
-     (cons (env_build (env_current_funcs env) (env_current_state env)) env)))
+  (λ (env is_top)
+    (if is_top
+        (cons (last env) env)
+        (cons (env_build (env_current_funcs env) (env_current_state env)) env))))
+
+(define last
+  (λ (list)
+    (cond
+      ((null? list) (error "empty list"))
+      ((null? (cdr list)) (car list))
+      (else (last (cdr list))))))
 
 ; Updates the current environment with new functions and/or state.
 ; Throws: No error checking. Be very careful that inputs are the correct form.
