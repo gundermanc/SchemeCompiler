@@ -413,7 +413,7 @@
 ; Throws: No error checking. Be very careful that inputs are the correct form.
 (define env_push_copy
   (λ (env)
-     (cons (env_build (env_current_funcs env) '(())) env)))
+     (cons (env_build (env_current_funcs env) (env_current_state env)) env)))
 
 ; Updates the current environment with new functions and/or state.
 ; Throws: No error checking. Be very careful that inputs are the correct form.
