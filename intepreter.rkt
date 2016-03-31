@@ -183,7 +183,7 @@
                                    (value env
                                           val
                                           env_cont
-                                          (λ (value env) (env_cont (env_current_value_add env name val)))
+                                          (λ (value env) (env_cont (env_current_value_add env name value)))
                                           continue_cont
                                           break_cont
                                           throw_cont)
