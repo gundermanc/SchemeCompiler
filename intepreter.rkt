@@ -7,10 +7,10 @@
 
 (load "functionParser.scm")
 
-(define interpret_new
+(define interpret
   (λ (filename)
     ((lambda (return_cont continue_cont break_cont throw_cont)
-       (interpret_ast_new (env_push '()) (parser filename)
+       (interpret_ast (env_push '()) (parser filename)
                           interpret_toplevel_statement
                           (λ (env) (call_function
                                         env
@@ -31,13 +31,13 @@
      (λ (e v) (error "Uncaught throw")))))
                          
 
-(define interpret_ast_new
+(define interpret_ast
   (λ (env ast stmt_interpreter env_cont return_cont continue_cont break_cont throw_cont)
     (if (null? ast)
         (env_cont env)
         (stmt_interpreter env
                           (current_statement ast)
-                          (λ (v) (interpret_ast_new v (remaining_statements ast) stmt_interpreter env_cont return_cont continue_cont break_cont throw_cont))
+                          (λ (v) (interpret_ast v (remaining_statements ast) stmt_interpreter env_cont return_cont continue_cont break_cont throw_cont))
                           return_cont
                           continue_cont
                           break_cont
@@ -78,7 +78,7 @@
 (define call_function
   (λ (env name args env_cont return_cont continue_cont break_cont throw_cont)
     ((λ (func)
-       (interpret_ast_new (bind_params (env_push_copy env) (caddr func) (cadr func) args)
+       (interpret_ast (bind_params (env_push_copy env) (caddr func) (cadr func) args)
                                        (caddr func)
                                        interpret_body_statement
                                        (λ (env) (env_cont (env_pop env)))
@@ -119,7 +119,7 @@
 
 (define interpret_try
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
-    (interpret_ast_new (env_scope_push env)
+    (interpret_ast (env_scope_push env)
                        (cadr statement)
                        interpret_body_statement
                        (λ (v) (interpret_finally (env_scope_pop v) statement env_cont return_cont continue_cont break_cont throw_cont))
@@ -137,23 +137,9 @@
                                                                       throw_cont))
                                           return_cont continue_cont break_cont throw_cont value)))))
 
-; Interprets a catch block/statement.
-; Throws an error if: no return statement in control flow path or
-; variables are used before being declared, variables are declared
-; multiple times, break or continue statement is encountered outside
-; of loop, or a throw statement is outside of a try/catch block.
-;
-;
-; state: the current program state.
-; statement: a properly formed abstract syntax tree try/catch/finally statement.
-; state_cont: State continuation function.
-; continue_cont: continue continuation function.
-; return_cont: return continuation function.
-; break_cont: break continuation function.
-; throw_cont: throw_continuation function.
 (define interpret_catch
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont value)
-    (interpret_ast_new (env_current_value_add (env_scope_push env) (catch_var statement) value)
+    (interpret_ast (env_current_value_add (env_scope_push env) (catch_var statement) value)
                    (try_block statement)
                    interpret_body_statement
                    (λ (v) (env_cont (env_scope_pop v)))
@@ -166,14 +152,14 @@
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
     (if (null? (finally_stmt statement))
         (env_cont env)
-        (interpret_ast_new env
+        (interpret_ast env
                            (finally_block statement)
                            interpret_body_statement
                            env_cont return_cont continue_cont break_cont throw_cont))))
 
 (define interpret_block
   (λ (env statement env_cont return_cont continue_cont break_cont throw_cont)
-    (interpret_ast_new (env_scope_push env) (remaining_statements statement)
+    (interpret_ast (env_scope_push env) (remaining_statements statement)
                        interpret_body_statement
                        (λ (v) (env_cont (env_scope_pop v)))
                        return_cont
