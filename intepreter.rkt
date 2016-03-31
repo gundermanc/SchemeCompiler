@@ -490,9 +490,9 @@
     (if (null? s)
         (error "undefined variable" name)
         (state_level_value (car s) name
-                           (λ (v) (if (null? v)
+                           (λ (v) (if (null? (unbox v))
                                       (error "variable used before initialization")
-                                      v))
+                                      (unbox v)))
                            (λ () (state_value (cdr s) name))))))
 
 ; Adds the specified value to the current environment mapped to the specified variable
@@ -524,7 +524,7 @@
 ; value: the value to map to the name.
 (define state_level_add
   (λ (s name value)
-    (cons (cons name (cons value '())) s)))
+    (cons (cons name (cons (box value) '())) s)))
 
 ; Iterates through the current level of the scope, heading out
 ; until it locates the existing mapping for the variable and replaces it.
@@ -537,7 +537,7 @@
   (λ (state name value replaced_cont notreplaced_cont)
     (cond
       ((null? state) (notreplaced_cont '()))
-      ((eq? (caar state) name) (replaced_cont (cons (cons (caar state) (cons value '())) (cdr state))))
+      ((eq? (caar state) name) (replaced_cont (begin (set-box! (cadar state) value) (cons (car state) (cdr state)))))
       (else (state_level_replace (cdr state) name value
                                  (λ (s) (replaced_cont (cons (car state) s)))
                                  (λ (s) (notreplaced_cont (cons (car state) s))))))))
