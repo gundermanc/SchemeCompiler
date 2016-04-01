@@ -1,4 +1,4 @@
-; EECS 345 Programming Project, Part 1 + 2
+; EECS 345 Programming Project, Part 1 + 2 + 3
 ; Case Western Reserve Univ.
 ;
 ; Christian Gunderman
