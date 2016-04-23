@@ -7,7 +7,7 @@
 
 ; External dependencies
 ; ==========================================================
-(load "functionParser.scm")
+(load "classParser.scm")
 
 ; Public "API"
 ; ==========================================================
@@ -41,6 +41,73 @@
 
 ; "Private" Impl:
 ; ==========================================================
+
+; Interprets top level AST into a list of classdefs of the format
+; (name [classdef]).
+; ast: top level abstract syntax tree.
+(define interpret_class_defs
+  (λ (ast)
+    (if (null? ast)
+        '()
+        (cons (interpret_class (current_statement ast)) (interpret_top_level_ast (remaining_statements ast))))))
+
+; Gets a key value pair of the format (name [class])
+; class: the class's ast.
+(define interpret_class
+  (λ (class)
+    (cons (classast_name class) (classdef_build (classast_parent class)
+                                                (classast_statements class 'var)
+                                                (classast_statements class 'function)))))
+
+; Gets a list of statements from the classast.
+; class: a classast.
+; filter: 'function, 'static-function, 'var, or similar.
+(define classast_statements
+  (λ (class statement_type)
+    (filter (λ (statement) (eq? (operator statement) statement_type)) (classast_body class))))
+
+; Gets the name of the class from a class definition.
+(define classast_name cadr)
+
+; Gets the name of the parent class of the given class or null for none.
+; class: a toplevel class ast of the format (class (extends B) ...)
+(define classast_parent
+  (λ (class)
+    (if (null? (caddr class))
+        '()
+        (cadr (caddr class)))))
+
+; Gets the list of declarations inside of the body of the class declaration ast.
+(define classast_body cadddr)
+
+; Creates a new class definition
+; parent_class: the class_def of the parent of this class.
+; instance_fields: the instance fields of this class.
+; methods: the methods of this class.
+(define classdef_build
+  (λ (parent_class instance_fields methods)
+    (cons parent_class (cons instance_fields (cons methods '())))))
+
+; Gets the parent class from a classdef.
+(define classdef_parent_class car)
+
+; Gets the instance fields from a classdef.
+(define classdef_instance_fields cadr)
+
+; Gets the methods from a classdef.
+(define classdef_methods caddr)
+
+; An empty class definition.
+(define classdef_empty
+  (λ ()
+    (classdef_build null null null)))
+
+; Creates a new class instance.
+; class_definition: A class template created by class_definition_build.
+; instance_field_values: A list of instance field values.
+(define classinst_build
+  (λ (class_definition instance_field_values)
+    (cons class_definition (cons instance_field_values '()))))
 
 ; Interprets an AST.
 ;
@@ -518,7 +585,6 @@
                                       (error "variable used before initialization")
                                       (unbox v)))
                            (λ () (state_stack_value (cdr stack) name))))))
-
 
 (define state_value
   (λ (state name)
