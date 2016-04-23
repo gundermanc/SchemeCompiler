@@ -42,14 +42,53 @@
 ; "Private" Impl:
 ; ==========================================================
 
+; Accepts an AST and parses the classes and launches the main
+; method of the designated class.
+; ast: the abstract syntax tree.
+; class_name: the symbol of the desired main class.
+(define interpret_toplevel_ast
+  (λ (ast class_name)
+    ((λ (state_cont return_cont continue_cont break_cont throw_cont)
+      (interpret_ast (state_push_scope (state_empty))
+                     (cadr (lookup_item (classdef_class_methods
+                                   (lookup_item (interpret_classes ast)
+                                                class_name
+                                                "Undefined class"))
+                                  'main
+                                  "Undefined entry point"))
+                     (λ (state) (call_function state 'main '() state_cont return_cont
+                                               continue_cont
+                                               break_cont
+                                               throw_cont))
+                     return_cont
+                     continue_cont
+                     break_cont
+                     throw_cont))
+     (λ (v) v); (error "No return statement encountered"))
+     (λ (v) (pretty_value v))
+     (λ (v) (error "Continue encountered outside of loop"))
+     (λ (v) (error "Break encountered outside of loop"))
+     (λ (v) (error "Uncaught throw")))))
+
+; Looks up an item in list of key value pairs.
+; list: a list of key value pairs.
+; name: the key to lookup.
+; err_msg: the message to show if the value cannot be found.
+(define lookup_item
+  (λ (list name err_msg)
+    (cond
+      ((null? list) (error err_msg name))
+      ((eq? (caar list) name) (cdar list))
+      (else (lookup_item (cdr list) name err_msg)))))
+
 ; Interprets top level AST into a list of classdefs of the format
 ; (name [classdef]).
 ; ast: top level abstract syntax tree.
-(define interpret_class_defs
+(define interpret_classes
   (λ (ast)
     (if (null? ast)
         '()
-        (cons (interpret_class (current_statement ast)) (interpret_top_level_ast (remaining_statements ast))))))
+        (cons (interpret_class (current_statement ast)) (interpret_classes (remaining_statements ast))))))
 
 ; Gets a key value pair of the format (name [class])
 ; class: the class's ast.
@@ -57,14 +96,16 @@
   (λ (class)
     (cons (classast_name class) (classdef_build (classast_parent class)
                                                 (classast_statements class 'var)
-                                                (classast_statements class 'function)))))
+                                                (classast_statements class 'function)
+                                                (classast_statements class 'static-var)
+                                                (classast_statements class 'static-function)))))
 
 ; Gets a list of statements from the classast.
 ; class: a classast.
 ; filter: 'function, 'static-function, 'var, or similar.
 (define classast_statements
   (λ (class statement_type)
-    (filter (λ (statement) (eq? (operator statement) statement_type)) (classast_body class))))
+    (map cdr (filter (λ (statement) (eq? (operator statement) statement_type)) (classast_body class)))))
 
 ; Gets the name of the class from a class definition.
 (define classast_name cadr)
@@ -83,10 +124,12 @@
 ; Creates a new class definition
 ; parent_class: the class_def of the parent of this class.
 ; instance_fields: the instance fields of this class.
-; methods: the methods of this class.
+; instance_methods: the methods of this class.
+; class_fields: static fields.
+; class_methods: static methods.
 (define classdef_build
-  (λ (parent_class instance_fields methods)
-    (cons parent_class (cons instance_fields (cons methods '())))))
+  (λ (parent_class instance_fields instance_methods class_fields class_methods)
+    (cons parent_class (cons instance_fields (cons instance_methods (cons class_fields (cons class_methods '())))))))
 
 ; Gets the parent class from a classdef.
 (define classdef_parent_class car)
@@ -95,12 +138,15 @@
 (define classdef_instance_fields cadr)
 
 ; Gets the methods from a classdef.
-(define classdef_methods caddr)
+(define classdef_instance_methods caddr)
 
-; An empty class definition.
-(define classdef_empty
-  (λ ()
-    (classdef_build null null null)))
+; Gets the class fields from a classdef.
+(define classdef_class_fields cadddr)
+
+; Gets the class methods from a classdef.
+(define classdef_class_methods
+  (λ (class)
+    (car (cddddr class))))
 
 ; Creates a new class instance.
 ; class_definition: A class template created by class_definition_build.
