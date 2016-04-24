@@ -526,6 +526,7 @@
                       continue_cont
                       break_cont
                       throw_cont))
+      ((and (list? expression) (eq? 'new (operator expression))) (value_new s expression state_cont))
       ((not (has_operand_2 expression))
        (value_cps s
                   (operand_1 expression)
@@ -539,6 +540,15 @@
                                           break_cont
                                           throw_cont))
                        continue_cont break_cont throw_cont)))))
+
+; Evaluates a new expression and creates a new object instance.
+(define value_new
+  (λ (state expression value_cont)
+    (value_cont (classinst_build (lookup_item (state_classdefs state)
+                                              (cadr expression)
+                                              "Undefined class")
+                                 '() ; TODO: instance field values.
+                                 ))))
 
 ; Wraps the value function such as to return non-lisp versions
 ; of boolean values.
