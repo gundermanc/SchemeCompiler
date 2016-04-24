@@ -48,22 +48,23 @@
 ; class_name: the symbol of the desired main class.
 (define interpret_toplevel_ast
   (λ (ast class_name)
-    ((λ (state_cont return_cont continue_cont break_cont throw_cont)
-      (interpret_ast (state_push_scope (state_empty))
-                     (cadr (lookup_item (classdef_class_methods
-                                   (lookup_item (interpret_classes ast)
-                                                class_name
-                                                "Undefined class"))
-                                  'main
-                                  "Undefined entry point"))
-                     (λ (state) (call_function state 'main '() state_cont return_cont
-                                               continue_cont
-                                               break_cont
-                                               throw_cont))
-                     return_cont
-                     continue_cont
-                     break_cont
-                     throw_cont))
+    ((λ (classes state_cont return_cont continue_cont break_cont throw_cont)
+       (interpret_ast (state_push_scope (state_build '() '() classes))
+                      (cadr (lookup_item (classdef_class_methods
+                                          (lookup_item classes
+                                                       class_name
+                                                       "Undefined class"))
+                                         'main
+                                         "Undefined entry point"))
+                      (λ (state) (call_function state 'main '() state_cont return_cont
+                                                continue_cont
+                                                break_cont
+                                                throw_cont))
+                      return_cont
+                      continue_cont
+                      break_cont
+                      throw_cont))
+     (interpret_classes ast)
      (λ (v) v); (error "No return statement encountered"))
      (λ (v) (pretty_value v))
      (λ (v) (error "Continue encountered outside of loop"))
@@ -642,7 +643,9 @@
 (define state_add
   (λ (state name value)
     ((λ (stack)
-      (state_build (state_functions state) (cons (state_stack_level_add (car stack) name (box value)) (cdr stack))))
+      (state_build (state_functions state)
+                   (cons (state_stack_level_add (car stack) name (box value)) (cdr stack))
+                   (state_classdefs state)))
      (state_stack state))))
 
 ; Adds the specified value to the given level of the state.
@@ -694,7 +697,9 @@
     (state_stack_update (state_functions state) name value
                         (λ () (error "Function with this name already exists"))
                         (λ () ((λ (stack)
-                                  (state_build (cons (state_stack_level_add (car stack) name (box value)) (cdr stack)) (state_stack state)))
+                                  (state_build (cons (state_stack_level_add (car stack) name (box value)) (cdr stack))
+                                               (state_stack state)
+                                               (state_classdefs state)))
                                 (state_functions state))))))
 
 (define state_lookup_function
@@ -704,15 +709,15 @@
 ; Wrapper for state_stack_push_scope
 (define state_push_scope
   (λ (state)
-    (state_build (cons '() (state_functions state)) (cons '() (state_stack state)))))
+    (state_build (cons '() (state_functions state))
+                 (cons '() (state_stack state))
+                 (state_classdefs state))))
 
 (define state_pop_scope
   (λ (state)
-    (state_build (cdr (state_functions state)) (cdr (state_stack state)))))
-
-; An empty state.
-(define state_empty
-  (λ () (state_build '() '())))
+    (state_build (cdr (state_functions state))
+                 (cdr (state_stack state))
+                 (state_classdefs state))))
 
 ; Gets the stack of state variables and functions.
 (define state_stack cadr)
@@ -720,10 +725,13 @@
 ; Gets the function variables from the state.
 (define state_functions car)
 
+; Gets the class defs from the state.
+(define state_classdefs caddr)
+
 ; Builds a new state object.
 (define state_build
-  (λ (functions stack)
-    (cons functions (cons stack '()))))
+  (λ (functions stack classdefs)
+    (cons functions (cons stack (cons classdefs '())))))
 
 ; Checks if the current scope is top level.
 ; If the current scope is top level, returns #t.
@@ -742,4 +750,6 @@
 ; Gets a new state containing only the topmost functions and vars.
 (define state_topmost_state
   (λ (state)
-    (state_build (cons (last (state_functions state)) '()) (cons (last (state_stack state)) '()))))
+    (state_build (cons (last (state_functions state)) '())
+                 (cons (last (state_stack state)) '())
+                 (state_classdefs state))))
