@@ -156,6 +156,12 @@
   (λ (class_definition instance_field_values)
     (cons class_definition (cons instance_field_values '()))))
 
+; Gets the classdef from a class instance.
+(define classinst_class_definition car)
+
+; Gets the field values from a class instance.
+(define classinst_instance_field_values cadr)
+
 ; Interprets an AST.
 ;
 ; Throws an error if: no return statement in control flow path or
@@ -527,6 +533,8 @@
                       break_cont
                       throw_cont))
       ((and (list? expression) (eq? 'new (operator expression))) (value_new s expression state_cont))
+      ((and (list? expression) (eq? 'dot (operator expression)))
+       (value_dot s expression state_cont continue_cont break_cont throw_cont))
       ((not (has_operand_2 expression))
        (value_cps s
                   (operand_1 expression)
@@ -540,6 +548,42 @@
                                           break_cont
                                           throw_cont))
                        continue_cont break_cont throw_cont)))))
+
+; Evaluates an expression of the form A.B and resolves its value.
+; state: The current program state.
+; expression: The (dot A B) expression.
+; value_cont: called to pass along the value.
+; continue_cont: we hit a continue statement.
+; break_cont: we hit a break statement.
+; throw_cont: we hit a throw statement.
+(define value_dot
+  (λ (state expression value_cont continue_cont break_cont throw_cont)
+    (value_cps state
+           (cadr expression)
+           (λ (left_value)
+             (if (not (list? left_value))
+                 (error "Left side of dot operator is not an object")
+                 (value_dot_rightexpr left_value (caddr expression) state value_cont continue_cont break_cont throw_cont)))
+           continue_cont
+           break_cont
+           throw_cont)))
+
+; Evaluates right side of a dot expression, given the value of the left side.
+; left_value: the value of the left side of the dot expression.
+; right_expr: the right expression.
+; state: the current program state.
+; value_cont: called to passalong the value.
+; continue_cont: called if continue keyword is encountered.
+; break_cont: called if break keyword is encountered.
+; throw_cont: called if throw keyword is encountered.
+(define value_dot_rightexpr
+  (λ (left_value right_expr state value_cont continue_cont break_cont throw_cont)
+    (cond
+      ((not (list? right_expr)) (state_stack_level_value (classinst_instance_field_values left_value)
+                                                         right_expr
+                                                         value_cont
+                                                         (λ ()(error "Undefined field" right_expr))))
+      (else (error "Invalid right side of dot operator")))))
 
 ; Evaluates a new expression and creates a new object instance.
 (define value_new
@@ -644,7 +688,7 @@
   (λ (s name return_cont notfound_cont)
     (cond
       ((null? s) (notfound_cont))
-      ((eq? (caar s) name) (return_cont (cadar s)))
+      ((eq? (caar s) name) (return_cont (unbox (cadar s))))
       (else (state_stack_level_value (cdr s) name return_cont notfound_cont)))))
 
 ; Iterates the stack of scopes in the state, starting from current and going up
@@ -659,9 +703,9 @@
     (if (null? stack)
         (error "undefined variable or function" name)
         (state_stack_level_value (car stack) name
-                           (λ (v) (if (null? (unbox v))
+                           (λ (v) (if (null? v)
                                       (error "variable used before initialization")
-                                      (unbox v)))
+                                      v))
                            (λ () (state_stack_value (cdr stack) name))))))
 
 (define state_value
