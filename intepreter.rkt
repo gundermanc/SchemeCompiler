@@ -246,16 +246,23 @@
 ; throw_cont: throw_continuation function.
 (define call_function
   (λ (state name_expr args state_cont return_cont continue_cont break_cont throw_cont)
-    ((λ (func)
-       (interpret_ast (function_closure state func args continue_cont break_cont throw_cont) (caddr func)
-                      state_cont
-                      (λ (v) (return_cont v))
-                      (λ (v) (error "Continue encountered outside of loop"))
-                      (λ (v) (error "Break encountered outside of loop"))
-                      throw_cont))
-     (if (list? name_expr)
-        (resolve_dot state name_expr resolve_member_func (λ (v) v) continue_cont break_cont throw_cont)
-        (state_lookup_function state name_expr)))))
+    ((λ (call_func)
+       (if (list? name_expr)
+           (resolve_dot state
+                        name_expr
+                        resolve_member_func
+                        call_func
+                        continue_cont
+                        break_cont
+                        throw_cont)
+           (call_func null(state_lookup_function state name_expr)))) ;TODO: pass class instance.
+     (λ (classinst func)
+       (interpret_ast (function_closure state classinst func args continue_cont break_cont throw_cont) (caddr func)
+                        state_cont
+                        (λ (v) (return_cont v))
+                        (λ (v) (error "Continue encountered outside of loop"))
+                        (λ (v) (error "Break encountered outside of loop"))
+                        throw_cont)))))
 
 ; Binds params to their formal params.
 ; state: the current program state.
@@ -283,15 +290,17 @@
 ; break_cont: break continuation function.
 ; throw_cont: throw_continuation function.
 (define function_closure
-  (λ (state func args continue_cont break_cont throw_cont)
+  (λ (state classinst func args continue_cont break_cont throw_cont)
     ((λ (formal_args)
        (if (not (eq? (length formal_args) (length args)))
            (error "Invalid number of arguments in function call")
-           (bind_params state (state_push_scope (if (car func) ; is topmost
-                                                    (state_topmost_state state)
-                                                    state))
-                        formal_args args continue_cont break_cont throw_cont)))
-     (cadr func))))
+           (declare_variable
+            (bind_params state (state_push_scope (if (car func) ; is topmost
+                                                     (state_topmost_state state)
+                                                     state))
+                         formal_args args continue_cont break_cont throw_cont)
+            'this #f classinst continue_cont break_cont throw_cont)))
+       (cadr func))))
     
 
 ; Interprets a try/catch/finally block/statement.
@@ -415,7 +424,7 @@
                                (λ () (state_add state name
                                                 (if has_val
                                                     (value state val continue_cont break_cont throw_cont)
-                                                    null))))))
+                                                    val))))))
 
 ; Interprets a var assign statement from the AST and returns the updated state.
 ; Throws an error if: variable has not yet been declared.
@@ -590,9 +599,9 @@
 
 (define resolve_member_func
   (λ (left_value right_expr state value_cont continue_cont break_cont throw_cont)
-    (cons right_expr (lookup_item (classdef_instance_methods (classinst_class_definition left_value))
-                 right_expr
-                 "Undefined member function"))))
+    (value_cont left_value (cons right_expr (lookup_item (classdef_instance_methods (classinst_class_definition left_value))
+                                                         right_expr
+                                                         "Undefined member function")))))
 
 ; Evaluates a new expression and creates a new object instance.
 (define value_new
