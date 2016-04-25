@@ -248,21 +248,20 @@
   (λ (state name_expr args state_cont return_cont continue_cont break_cont throw_cont)
     ((λ (call_func)
        (if (list? name_expr)
-           (resolve_dot state
-                        name_expr
-                        resolve_member_func
-                        call_func
-                        continue_cont
-                        break_cont
-                        throw_cont)
-           (call_func null(state_lookup_function state name_expr)))) ;TODO: pass class instance.
+           (resolve_member_func state
+                                name_expr
+                                call_func
+                                continue_cont
+                                break_cont
+                                throw_cont)
+           (call_func null (state_lookup_function state name_expr)))) ;TODO: pass class instance.
      (λ (classinst func)
        (interpret_ast (function_closure state classinst func args continue_cont break_cont throw_cont) (caddr func)
-                        state_cont
-                        (λ (v) (return_cont v))
-                        (λ (v) (error "Continue encountered outside of loop"))
-                        (λ (v) (error "Break encountered outside of loop"))
-                        throw_cont)))))
+                      state_cont
+                      (λ (v) (return_cont v))
+                      (λ (v) (error "Continue encountered outside of loop"))
+                      (λ (v) (error "Break encountered outside of loop"))
+                      throw_cont)))))
 
 ; Binds params to their formal params.
 ; state: the current program state.
@@ -277,7 +276,7 @@
     (if (or (null? formal_args) (null? args))
         new_state
         (bind_params current_state (declare_variable new_state (car formal_args) #t
-                                                     (value current_state (car args) continue_cont break_cont throw_cont)
+                                                     (car args)
                                                      continue_cont break_cont throw_cont)
                      (cdr formal_args) (cdr args) continue_cont break_cont throw_cont))))
 
@@ -433,9 +432,23 @@
 ; statement: a single parsed assign statement.
 (define interpret_assign
   (λ (state statement state_cont continue_cont break_cont throw_cont)
-    (value_cps state (operand_2 statement) (λ (v) (state_update state (operand_1 statement) v
-                                                                (λ () (state_cont state))
-                                                                (λ () (error "undeclared variable in assignment")))) continue_cont break_cont throw_cont)))
+    (if (list? (operand_1 statement))
+        (begin (resolve_field_and_update state
+                                  (cadr statement)
+                                  (value state
+                                         (caddr statement)
+                                         continue_cont
+                                         break_cont
+                                         throw_cont)
+                                  continue_cont
+                                  break_cont
+                                  throw_cont)
+               (state_cont state))        
+        (value_cps state (operand_2 statement)
+                   (λ (v) (state_update state (operand_1 statement) v
+                                        (λ () (state_cont state))
+                                        (λ () (error "undeclared variable in assignment"))))
+                   continue_cont break_cont throw_cont))))
     
 
 ; Interprets a while loop.
@@ -547,7 +560,7 @@
                       throw_cont))
       ((and (list? expression) (eq? 'new (operator expression))) (value_new s expression state_cont))
       ((and (list? expression) (eq? 'dot (operator expression)))
-       (resolve_dot s expression resolve_field state_cont continue_cont break_cont throw_cont))
+       (resolve_field s expression state_cont continue_cont break_cont throw_cont))
       ((not (has_operand_2 expression))
        (value_cps s
                   (operand_1 expression)
@@ -565,43 +578,84 @@
 ; Evaluates an expression of the form A.B and resolves its value.
 ; state: The current program state.
 ; expression: The (dot A B) expression.
-; right_func: function to call on the right side of the dot.
-; value_cont: called to pass along the value.
 ; continue_cont: we hit a continue statement.
 ; break_cont: we hit a break statement.
 ; throw_cont: we hit a throw statement.
 (define resolve_dot
-  (λ (state expression right_func value_cont continue_cont break_cont throw_cont)
-    (value_cps state
-           (cadr expression)
-           (λ (left_value)
-             (if (not (list? left_value))
-                 (error "Left side of dot operator is not an object")
-                 (right_func left_value (caddr expression) state value_cont continue_cont break_cont throw_cont)))
-           continue_cont
-           break_cont
-           throw_cont)))
+  (λ (state expression continue_cont break_cont throw_cont)
+    ((λ (left_value)
+       (value_cps state
+                  (cadr expression)
+                  (λ (left_value)
+                    (if (not (list? left_value))
+                        (error "Left side of dot operator is not an object")
+                        left_value))
+                  continue_cont
+                  break_cont
+                  throw_cont))
+     (cadr expression))))
 
 ; Evaluates a field.
-; left_value: the value of the left side of the dot expression.
-; right_expr: the right expression.
 ; state: the current program state.
+; expression: the field expression.
 ; value_cont: called to passalong the value.
 ; continue_cont: called if continue keyword is encountered.
 ; break_cont: called if break keyword is encountered.
 ; throw_cont: called if throw keyword is encountered.
 (define resolve_field
-  (λ (left_value right_expr state value_cont continue_cont break_cont throw_cont)
-    (state_stack_level_value (classinst_instance_field_values left_value)
-                             right_expr
+  (λ (state expression value_cont continue_cont break_cont throw_cont)
+    (state_stack_level_value (classinst_instance_field_values (resolve_dot state
+                                                                           expression
+                                                                           continue_cont
+                                                                           break_cont
+                                                                           throw_cont))
+                             (caddr expression)
                              value_cont
-                             (λ ()(error "Undefined field" right_expr)))))
+                             (λ () (error "Undefined field" (caddr expression))))))
 
+; Evaluates a dot expression and returns a member.
+; state: the current program state.
+; expression: the field expression.
+; value_cont: called to passalong the value.
+; continue_cont: called if continue keyword is encountered.
+; break_cont: called if break keyword is encountered.
+; throw_cont: called if throw keyword is encountered.
 (define resolve_member_func
-  (λ (left_value right_expr state value_cont continue_cont break_cont throw_cont)
-    (value_cont left_value (cons right_expr (lookup_item (classdef_instance_methods (classinst_class_definition left_value))
-                                                         right_expr
-                                                         "Undefined member function")))))
+  (λ (state expression value_cont continue_cont break_cont throw_cont)
+    ((λ (left_value right_expr)
+      
+       (value_cont left_value
+                   (cons right_expr
+                         (lookup_item
+                          (classdef_instance_methods (classinst_class_definition left_value))
+                          right_expr
+                          "Undefined member function"))))
+     (resolve_dot state
+                  expression
+                  continue_cont
+                  break_cont
+                  throw_cont)
+     (caddr expression))))
+
+; Evaluates a dot expression and updates the field with the given value.
+; state: the current program state.
+; expression: the field expression.
+; value: the new value.
+; continue_cont: called if continue keyword is encountered.
+; break_cont: called if break keyword is encountered.
+; throw_cont: called if throw keyword is encountered.
+(define resolve_field_and_update
+  (λ (state expression value continue_cont break_cont throw_cont)
+    (state_stack_level_replace (classinst_instance_field_values (resolve_dot state
+                                                                             expression
+                                                                             continue_cont
+                                                                             break_cont
+                                                                             throw_cont))
+                               (caddr expression)
+                               value
+                               (λ () value)
+                               (λ () (error "Invalid field in assignment")))))
+   
 
 ; Evaluates a new expression and creates a new object instance.
 (define value_new
@@ -631,7 +685,7 @@
                                         (λ () (error "Duplicate field" name))
                                         (λ () (state_stack_level_add fields_inst name value_expr)))))
          (caar fields_def)
-         (cadar fields_def)))))
+         (cadar fields_def))))) ; TODO: what do if there is no initializer.
 
 ; Wraps the value function such as to return non-lisp versions
 ; of boolean values.
