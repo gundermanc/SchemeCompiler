@@ -304,14 +304,17 @@
     ((λ (formal_args)
        (if (not (eq? (length formal_args) (length args)))
            (error "Invalid number of arguments in function call")
-           (declare_variable
-            (declare_variable
-             (bind_params state (state_push_scope (if (car func) ; is topmost
+           ((λ (param_bound_state)
+              (declare_variable
+               (declare_variable
+                param_bound_state
+                'this #f classinst continue_cont break_cont throw_cont)
+               'super #f (classinst_super state classinst) continue_cont break_cont throw_cont))
+            (bind_params state (state_push_scope (if (car func) ; is topmost
                                                       (state_topmost_state state)
                                                       state))
-                          formal_args args continue_cont break_cont throw_cont)
-             'this #f classinst continue_cont break_cont throw_cont)
-            'super #f (classinst_super state classinst) continue_cont break_cont throw_cont)))
+                          formal_args args continue_cont break_cont throw_cont))))
+           
        (cadr func))))
     
 
