@@ -544,11 +544,32 @@
 ; Evaluates a new expression and creates a new object instance.
 (define value_new
   (λ (state expression value_cont)
-    (value_cont (classinst_build (lookup_item (state_classdefs state)
-                                              (cadr expression)
-                                              "Undefined class")
-                                 '() ; TODO: instance field values.
-                                 ))))
+    ((λ (classdef)
+       (value_cont (classinst_build classdef
+                                    (define_instance_field_values state (classdef_instance_fields classdef) '()))))
+     (lookup_item (state_classdefs state)
+                  (cadr expression)
+                  "Undefined class"))))
+
+; Create a list of field key value pairs.
+; state: the current state.
+; fields_def: the list of field name/value combinations from the class def.
+; fields_inst: the list of existing fields from the instance.
+(define define_instance_field_values
+  (λ (state fields_def fields_inst)
+    (if (null? fields_def)
+        fields_inst
+        ((λ (name value_expr)
+           (define_instance_field_values
+             state
+             (cdr fields_def)
+             (state_stack_level_replace fields_inst
+                                        name
+                                        value_expr  ;; TODO: evaluate value_expr??
+                                        (λ () (error "Duplicate field" name))
+                                        (λ () (state_stack_level_add fields_inst name value_expr)))))
+         (caar fields_def)
+         (cadar fields_def)))))
 
 ; Wraps the value function such as to return non-lisp versions
 ; of boolean values.
@@ -654,7 +675,7 @@
   (λ (state name value)
     ((λ (stack)
       (state_build (state_functions state)
-                   (cons (state_stack_level_add (car stack) name (box value)) (cdr stack))
+                   (cons (state_stack_level_add (car stack) name value) (cdr stack))
                    (state_classdefs state)))
      (state_stack state))))
 
@@ -664,7 +685,7 @@
 ; value: the value to map to the name.
 (define state_stack_level_add
   (λ (stack name value)
-    (cons (cons name (cons value '())) stack)))
+    (cons (cons name (cons (box value) '())) stack)))
 
 ; Iterates through the current level of the scope, heading out
 ; until it locates the existing mapping for the variable and replaces it.
@@ -707,7 +728,7 @@
     (state_stack_update (state_functions state) name value
                         (λ () (error "Function with this name already exists"))
                         (λ () ((λ (stack)
-                                  (state_build (cons (state_stack_level_add (car stack) name (box value)) (cdr stack))
+                                  (state_build (cons (state_stack_level_add (car stack) name value) (cdr stack))
                                                (state_stack state)
                                                (state_classdefs state)))
                                 (state_functions state))))))
