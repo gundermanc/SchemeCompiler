@@ -217,7 +217,9 @@
       ((eq? 'try (operator statement)) (interpret_try state statement state_cont return_cont continue_cont break_cont throw_cont))
       ((eq? 'throw (operator statement)) (throw_cont (value state (operand_1 statement) continue_cont break_cont throw_cont)))
       ((eq? 'function (operator statement)) (interpret_function state statement state_cont return_cont continue_cont break_cont throw_cont))
-      ((eq? 'funcall (operator statement)) (call_function state (operand_1 statement) (cddr statement) state_cont (λ (v) (state_cont state))
+      ((eq? 'funcall (operator statement)) (call_function state
+                                                          (operand_1 statement)
+                                                          (cddr statement) state_cont (λ (v) (state_cont state))
                                                           continue_cont break_cont throw_cont))
       (else (error "invalid statement")))))
 
@@ -236,14 +238,14 @@
 
 ; Calls a function.
 ; state: the current program state.
-; statement: a properly formed abstract syntax tree statement.
+; name_expr: either a function name or a (dot ..) expression.
 ; state_cont: State continuation function.
 ; continue_cont: continue continuation function.
 ; return_cont: return continuation function.
 ; break_cont: break continuation function.
 ; throw_cont: throw_continuation function.
 (define call_function
-  (λ (state name args state_cont return_cont continue_cont break_cont throw_cont)
+  (λ (state name_expr args state_cont return_cont continue_cont break_cont throw_cont)
     ((λ (func)
        (interpret_ast (function_closure state func args continue_cont break_cont throw_cont) (caddr func)
                       state_cont
@@ -251,7 +253,9 @@
                       (λ (v) (error "Continue encountered outside of loop"))
                       (λ (v) (error "Break encountered outside of loop"))
                       throw_cont))
-     (state_lookup_function state name))))
+     (if (list? name_expr)
+        (resolve_dot state name_expr resolve_member_func (λ (v) v) continue_cont break_cont throw_cont)
+        (state_lookup_function state name_expr)))))
 
 ; Binds params to their formal params.
 ; state: the current program state.
@@ -534,7 +538,7 @@
                       throw_cont))
       ((and (list? expression) (eq? 'new (operator expression))) (value_new s expression state_cont))
       ((and (list? expression) (eq? 'dot (operator expression)))
-       (value_dot s expression state_cont continue_cont break_cont throw_cont))
+       (resolve_dot s expression resolve_field state_cont continue_cont break_cont throw_cont))
       ((not (has_operand_2 expression))
        (value_cps s
                   (operand_1 expression)
@@ -552,23 +556,24 @@
 ; Evaluates an expression of the form A.B and resolves its value.
 ; state: The current program state.
 ; expression: The (dot A B) expression.
+; right_func: function to call on the right side of the dot.
 ; value_cont: called to pass along the value.
 ; continue_cont: we hit a continue statement.
 ; break_cont: we hit a break statement.
 ; throw_cont: we hit a throw statement.
-(define value_dot
-  (λ (state expression value_cont continue_cont break_cont throw_cont)
+(define resolve_dot
+  (λ (state expression right_func value_cont continue_cont break_cont throw_cont)
     (value_cps state
            (cadr expression)
            (λ (left_value)
              (if (not (list? left_value))
                  (error "Left side of dot operator is not an object")
-                 (value_dot_rightexpr left_value (caddr expression) state value_cont continue_cont break_cont throw_cont)))
+                 (right_func left_value (caddr expression) state value_cont continue_cont break_cont throw_cont)))
            continue_cont
            break_cont
            throw_cont)))
 
-; Evaluates right side of a dot expression, given the value of the left side.
+; Evaluates a field.
 ; left_value: the value of the left side of the dot expression.
 ; right_expr: the right expression.
 ; state: the current program state.
@@ -576,14 +581,18 @@
 ; continue_cont: called if continue keyword is encountered.
 ; break_cont: called if break keyword is encountered.
 ; throw_cont: called if throw keyword is encountered.
-(define value_dot_rightexpr
+(define resolve_field
   (λ (left_value right_expr state value_cont continue_cont break_cont throw_cont)
-    (cond
-      ((not (list? right_expr)) (state_stack_level_value (classinst_instance_field_values left_value)
-                                                         right_expr
-                                                         value_cont
-                                                         (λ ()(error "Undefined field" right_expr))))
-      (else (error "Invalid right side of dot operator")))))
+    (state_stack_level_value (classinst_instance_field_values left_value)
+                             right_expr
+                             value_cont
+                             (λ ()(error "Undefined field" right_expr)))))
+
+(define resolve_member_func
+  (λ (left_value right_expr state value_cont continue_cont break_cont throw_cont)
+    (cons right_expr (lookup_item (classdef_instance_methods (classinst_class_definition left_value))
+                 right_expr
+                 "Undefined member function"))))
 
 ; Evaluates a new expression and creates a new object instance.
 (define value_new
