@@ -157,9 +157,15 @@
     (cons class_definition (cons instance_field_values '()))))
 
 (define classinst_super
-  (λ (classinst)
-    (classinst_build (classdef_parent_class (classinst_class_definition classinst))
-                     (cdr (classinst_instance_field_values classinst)))))
+  (λ (state classinst)
+    ((λ (class_name)
+       (classinst_build (if (null? class_name)
+                            '()
+                            (lookup_item (state_classdefs state)
+                                         class_name
+                                         "Undefined parent class"))
+                        (cdr (classinst_instance_field_values classinst))))
+     (classdef_parent_class (classinst_class_definition classinst)))))
 
 ; Gets the classdef from a class instance.
 (define classinst_class_definition car)
@@ -305,7 +311,7 @@
                                                       state))
                           formal_args args continue_cont break_cont throw_cont)
              'this #f classinst continue_cont break_cont throw_cont)
-            'super #f (classinst_super classinst) continue_cont break_cont throw_cont)))
+            'super #f (classinst_super state classinst) continue_cont break_cont throw_cont)))
        (cadr func))))
     
 
@@ -628,7 +634,6 @@
 (define resolve_member_func
   (λ (state expression value_cont continue_cont break_cont throw_cont)
     ((λ (left_value right_expr)
-      
        (value_cont left_value
                    (cons right_expr
                          (lookup_item
