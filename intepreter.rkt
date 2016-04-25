@@ -156,6 +156,11 @@
   (λ (class_definition instance_field_values)
     (cons class_definition (cons instance_field_values '()))))
 
+(define classinst_super
+  (λ (classinst)
+    (classinst_build (classdef_parent_class (classinst_class_definition classinst))
+                     (cdr (classinst_instance_field_values classinst)))))
+
 ; Gets the classdef from a class instance.
 (define classinst_class_definition car)
 
@@ -294,11 +299,13 @@
        (if (not (eq? (length formal_args) (length args)))
            (error "Invalid number of arguments in function call")
            (declare_variable
-            (bind_params state (state_push_scope (if (car func) ; is topmost
-                                                     (state_topmost_state state)
-                                                     state))
-                         formal_args args continue_cont break_cont throw_cont)
-            'this #f classinst continue_cont break_cont throw_cont)))
+            (declare_variable
+             (bind_params state (state_push_scope (if (car func) ; is topmost
+                                                      (state_topmost_state state)
+                                                      state))
+                          formal_args args continue_cont break_cont throw_cont)
+             'this #f classinst continue_cont break_cont throw_cont)
+            'super #f (classinst_super classinst) continue_cont break_cont throw_cont)))
        (cadr func))))
     
 
@@ -604,14 +611,12 @@
 ; throw_cont: called if throw keyword is encountered.
 (define resolve_field
   (λ (state expression value_cont continue_cont break_cont throw_cont)
-    (state_stack_level_value (classinst_instance_field_values (resolve_dot state
-                                                                           expression
-                                                                           continue_cont
-                                                                           break_cont
-                                                                           throw_cont))
-                             (caddr expression)
-                             value_cont
-                             (λ () (error "Undefined field" (caddr expression))))))
+    (state_stack_value (classinst_instance_field_values (resolve_dot state
+                                                                     expression
+                                                                     continue_cont
+                                                                     break_cont
+                                                                     throw_cont))
+                             (caddr expression))))
 
 ; Evaluates a dot expression and returns a member.
 ; state: the current program state.
@@ -646,26 +651,34 @@
 ; throw_cont: called if throw keyword is encountered.
 (define resolve_field_and_update
   (λ (state expression value continue_cont break_cont throw_cont)
-    (state_stack_level_replace (classinst_instance_field_values (resolve_dot state
-                                                                             expression
-                                                                             continue_cont
-                                                                             break_cont
-                                                                             throw_cont))
-                               (caddr expression)
-                               value
-                               (λ () value)
-                               (λ () (error "Invalid field in assignment")))))
+    (state_stack_update (classinst_instance_field_values (resolve_dot state
+                                                                      expression
+                                                                      continue_cont
+                                                                      break_cont
+                                                                      throw_cont))
+                        (caddr expression)
+                        value
+                        (λ () value)
+                        (λ () (error "Invalid field in assignment")))))
    
-
 ; Evaluates a new expression and creates a new object instance.
 (define value_new
   (λ (state expression value_cont)
     ((λ (classdef)
        (value_cont (classinst_build classdef
-                                    (define_instance_field_values state (classdef_instance_fields classdef) '()))))
+                                    (instantiate_classinst_fields_hierarchy state classdef))))
      (lookup_item (state_classdefs state)
                   (cadr expression)
                   "Undefined class"))))
+
+(define instantiate_classinst_fields_hierarchy
+  (λ (state classdef)
+    (cons (define_instance_field_values state (classdef_instance_fields classdef) '())
+          (if (null? (classdef_parent_class classdef))
+              '()
+              (instantiate_classinst_fields_hierarchy state (lookup_item (state_classdefs state)
+                                                                         (classdef_parent_class classdef)
+                                                                         "Undefined parent class"))))))
 
 ; Create a list of field key value pairs.
 ; state: the current state.
