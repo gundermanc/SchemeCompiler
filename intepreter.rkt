@@ -258,14 +258,12 @@
 (define call_function
   (λ (state name_expr args state_cont return_cont continue_cont break_cont throw_cont)
     ((λ (call_func)
-       (if (list? name_expr)
-           (resolve_member_func state
-                                name_expr
-                                call_func
-                                continue_cont
-                                break_cont
-                                throw_cont)
-           (call_func null (state_lookup_function state name_expr)))) ;TODO: pass class instance.
+       (resolve_func state
+                     name_expr
+                     call_func
+                     continue_cont
+                     break_cont
+                     throw_cont)) ;TODO: pass class instance.
      (λ (classinst func)
        (interpret_ast (function_closure state classinst func args continue_cont break_cont throw_cont) (caddr func)
                       state_cont
@@ -305,18 +303,18 @@
        (if (not (eq? (length formal_args) (length args)))
            (error "Invalid number of arguments in function call")
            ((λ (param_bound_state)
-              (declare_variable
-               (declare_variable
-                param_bound_state
-                'this #f classinst continue_cont break_cont throw_cont)
-               'super #f (classinst_super state classinst) continue_cont break_cont throw_cont))
+              (if (null? classinst)
+                  param_bound_state
+                  (declare_variable
+                   (declare_variable
+                    param_bound_state
+                    'this #f classinst continue_cont break_cont throw_cont)
+                   'super #f (classinst_super state classinst) continue_cont break_cont throw_cont)))
             (bind_params state (state_push_scope (if (car func) ; is topmost
-                                                      (state_topmost_state state)
-                                                      state))
-                          formal_args args continue_cont break_cont throw_cont))))
-           
-       (cadr func))))
-    
+                                                     (state_topmost_state state)
+                                                     state))
+                         formal_args args continue_cont break_cont throw_cont))))
+     (cadr func))))
 
 ; Interprets a try/catch/finally block/statement.
 ;
@@ -625,7 +623,9 @@
                                                                      continue_cont
                                                                      break_cont
                                                                      throw_cont))
-                             (caddr expression))))
+                       (λ (v) v)
+                       (λ () (error "Unknown field"))
+                       (caddr expression))))
 
 ; Evaluates a dot expression and returns a member.
 ; state: the current program state.
@@ -634,21 +634,42 @@
 ; continue_cont: called if continue keyword is encountered.
 ; break_cont: called if break keyword is encountered.
 ; throw_cont: called if throw keyword is encountered.
-(define resolve_member_func
+(define resolve_func
   (λ (state expression value_cont continue_cont break_cont throw_cont)
-    ((λ (left_value right_expr)
-       (value_cont left_value
-                   (cons right_expr
-                         (lookup_item
-                          (classdef_instance_methods (classinst_class_definition left_value))
-                          right_expr
-                          "Undefined member function"))))
-     (resolve_dot state
-                  expression
-                  continue_cont
-                  break_cont
-                  throw_cont)
-     (caddr expression))))
+    (if (list? expression)
+        (resolve_member_func state
+                             (resolve_dot state
+                                          expression
+                                          continue_cont
+                                          break_cont
+                                          throw_cont)
+                             (caddr expression) value_cont continue_cont break_cont throw_cont)
+        (state_lookup_function state
+                               expression
+                               (λ (v) (value_cont null v))
+                               (λ ()
+                                 (resolve_member_func state
+                                                      (state_value state 'this) ;; TODO: "undefined value this is a poor error message.
+                                                      expression
+                                                      value_cont
+                                                      continue_cont
+                                                      break_cont
+                                                      throw_cont))))))
+
+
+(define resolve_member_func
+  (λ (state left_value right_expr value_cont continue_cont break_cont throw_cont)
+    (if (null? left_value)
+        (error "Undefined function" right_expr)
+        (value_cont left_value
+                    (cons right_expr
+                          (lookup_item
+                           (classdef_instance_methods (classinst_class_definition left_value))
+                           right_expr
+                           "Undefined member function"))))))
+                                     
+    
+    
 
 ; Evaluates a dot expression and updates the field with the given value.
 ; state: the current program state.
@@ -792,18 +813,18 @@
 ; Throws: undefined var if it doesn't exist or used before initialization if the
 ; var was declared without a initial value.
 (define state_stack_value
-  (λ (stack name)
+  (λ (stack name value_cont notfound_cont)
     (if (null? stack)
-        (error "undefined variable or function" name)
+        (notfound_cont)
         (state_stack_level_value (car stack) name
                            (λ (v) (if (null? v)
                                       (error "variable used before initialization")
-                                      v))
-                           (λ () (state_stack_value (cdr stack) name))))))
+                                      (value_cont v)))
+                           (λ () (state_stack_value (cdr stack) name value_cont notfound_cont))))))
 
 (define state_value
   (λ (state name)
-    (state_stack_value (state_stack state) name)))
+    (state_stack_value (state_stack state) name (λ (v) v) (λ () (error "Undefined value" name)))))
 
 ; Adds the specified value to the state s mapped to the specified variable
 ; in the current scope.
@@ -871,8 +892,8 @@
                                 (state_functions state))))))
 
 (define state_lookup_function
-  (λ (state name)
-    (state_stack_value (state_functions state) name)))  
+  (λ (state name value_cont notfound_cont)
+    (state_stack_value (state_functions state) name value_cont notfound_cont)))  
 
 ; Wrapper for state_stack_push_scope
 (define state_push_scope
