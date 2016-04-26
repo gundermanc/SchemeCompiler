@@ -623,9 +623,9 @@
                                                                      continue_cont
                                                                      break_cont
                                                                      throw_cont))
-                       (λ (v) v)
-                       (λ () (error "Unknown field"))
-                       (caddr expression))))
+                       (caddr expression)
+                       value_cont
+                       (λ () (error "Unknown field")))))
 
 ; Evaluates a dot expression and returns a member.
 ; state: the current program state.
